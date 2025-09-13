@@ -95,11 +95,10 @@
           <form method="post" action="{% url 'projects_update_paper' pk=project.pk %}" class="p-4">
             {% csrf_token %}
             <input type="hidden" name="tab" value="paper">
-            <input type="hidden" name="content_format" value="{{ paper.content_format }}">
+            <input type="hidden" name="content_format" value="tex">
             <div class="flex items-center justify-between">
               <div class="text-sm font-semibold">Paper editor</div>
               <div class="flex items-center gap-2">
-                <a href="https://www.markdownguide.org/basic-syntax/" target="_blank" rel="noopener" class="text-xs text-gray-600 hover:text-gray-800">Markdown</a>
                 <a href="https://www.mathjax.org/" target="_blank" rel="noopener" class="text-xs text-gray-600 hover:text-gray-800">LaTeX</a>
                 <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Save</button>
               </div>
@@ -114,8 +113,8 @@
                 <textarea name="abstract" rows="3" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:outline-none" placeholder="A concise abstract">{{ paper.abstract }}</textarea>
               </div>
               <div class="lg:col-span-2">
-                <label class="block text-xs font-medium text-gray-700">Content (Markdown + LaTeX)</label>
-                <textarea id="paper-content" name="content_raw" rows="20" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:outline-none" placeholder="# Introduction\nWrite your paper here...">{{ paper.content_raw }}</textarea>
+                <label class="block text-xs font-medium text-gray-700">Content (LaTeX)</label>
+                <textarea id="paper-content" name="content_raw" rows="20" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:outline-none" placeholder="% LaTeX example\n\\section{Introduction}\nThis is inline math $E=mc^2$.\n\\begin{equation}\na^2 + b^2 = c^2\n\\end{equation}">{{ paper.content_raw }}</textarea>
               </div>
             </div>
           </form>
@@ -346,48 +345,59 @@
     const init = (document.getElementById('project-tabs')?.dataset?.initialTab) || 'overview';
     selectTab(init);
 
-    // Live preview for paper with light preprocessing of plain text into Markdown
-    function preprocessToMarkdown(raw) {
-      if (!raw) return '';
-      let text = String(raw).replace(/\r\n/g, '\n');
+    // Convert LaTeX to simple HTML structure while keeping math as LaTeX for MathJax
+    function latexToHtml(src) {
+      let text = String(src || '').replace(/\r\n/g, '\n');
+      // Remove common preamble directives
+      text = text.replace(/\\documentclass[^\n]*\n?/g, '');
+      text = text.replace(/\\usepackage\{[^}]+\}\n?/g, '');
+      text = text.replace(/\\begin\{document\}\n?/g, '');
+      text = text.replace(/\\end\{document\}\n?/g, '');
+      text = text.replace(/\\maketitle\n?/g, '');
 
-      // Promote common section labels to headings
-      text = text.replace(/(^|\n)\s*Abstract\s*(\n+)/gi, '\n\n## Abstract\n\n');
-      text = text.replace(/(^|\n)\s*Contents\s*(\n+)/gi, '\n\n## Contents\n\n');
-      text = text.replace(/(^|\n)\s*Conclusion(s)?\s*(\n+)/gi, '\n\n## Conclusion\n\n');
-      text = text.replace(/(^|\n)\s*Introduction\s*(\n+)/gi, '\n\n## Introduction\n\n');
-      text = text.replace(/(^|\n)\s*Remarks:\s*/gi, '\n\n### Remarks\n');
+      // Headings
+      text = text.replace(/\\section\*?\{([^}]*)\}/g, '\n\n<h2>$1<\/h2>\n\n');
+      text = text.replace(/\\subsection\*?\{([^}]*)\}/g, '\n\n<h3>$1<\/h3>\n\n');
+      text = text.replace(/\\subsubsection\*?\{([^}]*)\}/g, '\n\n<h4>$1<\/h4>\n\n');
+      text = text.replace(/\\paragraph\*?\{([^}]*)\}/g, '\n\n<h5>$1<\/h5>\n\n');
 
-      // Convert [Bracketed Titles] to subheadings
-      text = text.replace(/^\s*\[([^\]]+)\]\s*$/gm, '### $1');
-
-      // Section numbering like `1 Title` or `6.1 Example: ...`
-      text = text.replace(/^(\d+(?:\.\d+)*)\s+(.+)$/gm, function(_, num, title) {
-        // If line already looks like a figure/table number, skip
-        if (/^\d+$/.test(title.trim())) return `${num} ${title}`;
-        const level = num.indexOf('.') !== -1 ? 3 : 2;
-        return `${'#'.repeat(level)} ${num} ${title}`;
+      // Equations and align environments → keep as $$ ... $$ for MathJax
+      text = text.replace(/\\begin\{equation\*?\}([\s\S]*?)\\end\{equation\*?\}/g, function(_, body){
+        return `\n\n$$\n${body.trim()}\n$$\n\n`;
+      });
+      text = text.replace(/\\begin\{align\*?\}([\s\S]*?)\\end\{align\*?\}/g, function(_, body){
+        return `\n\n$$\n${body.trim()}\n$$\n\n`;
       });
 
-      // Bullets like `• item` → `- item`
-      text = text.replace(/^\s*[•]\s*/gm, '- ');
+      // Itemize → <ul><li>
+      text = text.replace(/\\begin\{itemize\}([\s\S]*?)\\end\{itemize\}/g, function(_, body){
+        const items = body.replace(/^\s*\\item\s*/gm, '<li>').replace(/\n(?=\s*\\item|$)/g, '</li>\n');
+        return `\n<ul>\n${items}\n</ul>\n`;
+      });
+      // Enumerate → <ol><li>
+      text = text.replace(/\\begin\{enumerate\}([\s\S]*?)\\end\{enumerate\}/g, function(_, body){
+        const items = body.replace(/^\s*\\item\s*/gm, '<li>').replace(/\n(?=\s*\\item|$)/g, '</li>\n');
+        return `\n<ol>\n${items}\n</ol>\n`;
+      });
 
-      // Ensure blank line before headings for markdown parsers
-      text = text.replace(/([^\n])\n(#{2,6}\s)/g, '$1\n\n$2');
+      // Simple emphasis
+      text = text.replace(/\\textbf\{([^}]*)\}/g, '<strong>$1<\/strong>');
+      text = text.replace(/\\emph\{([^}]*)\}/g, '<em>$1<\/em>');
 
+      // Preserve line breaks inside plain paragraphs
+      text = text.replace(/([^>])\n(?!\n)/g, '$1<br/>');
       return text;
     }
 
+    // Render LaTeX-only content
     function renderPreview() {
       const src = document.getElementById('paper-content');
       const out = document.getElementById('paper-preview');
-      if (!src || !out || !window.marked || !window.DOMPurify) return;
+      if (!src || !out || !window.DOMPurify) return;
       const raw = src.value || '';
-      const md = preprocessToMarkdown(raw);
-      if (window.marked && marked.setOptions) {
-        marked.setOptions({ gfm: true, breaks: true });
-      }
-      const html = DOMPurify.sanitize(marked.parse(md));
+      const latexHtml = latexToHtml(raw);
+      // Only minimal sanitization for text; MathJax will process math
+      const html = DOMPurify.sanitize(latexHtml, {ALLOWED_TAGS: ['b','i','em','strong','p','br','ul','ol','li','h2','h3','h4','h5','h6','code','pre']});
       out.innerHTML = html;
       if (window.MathJax && MathJax.typesetPromise) {
         MathJax.typesetPromise([out]).catch(() => {});
@@ -401,12 +411,15 @@
   })();
 </script>
 
-<!-- Markdown, Sanitizer, MathJax -->
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<!-- Sanitizer, MathJax -->
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
 <script>
   window.MathJax = {
-    tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] },
+    tex: {
+      inlineMath: [['\\(','\\)'], ['$', '$']],
+      displayMath: [['\\[','\\]'], ['$$','$$']],
+      packages: {'[+]': ['base', 'ams', 'noerrors', 'noundefined']}
+    },
     options: { renderActions: { addMenu: [] } }
   };
 </script>
