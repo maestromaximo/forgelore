@@ -18,7 +18,73 @@ def home(request):
 @login_required
 def dashboard(request):
     """Dashboard overview using templates/dashboard.html."""
-    return render(request, 'dashboard.html')
+    # Get KPI counts for the user
+    projects_count = Project.objects.filter(owner=request.user).count()
+    literature_count = Literature.objects.filter(
+        Q(citations__paper__project__owner=request.user) |
+        Q(hypotheses__project__owner=request.user)
+    ).distinct().count()
+    experiments_count = Simulation.objects.filter(project__owner=request.user).count()
+
+    # Get recent activity (last 5 items from different models)
+    recent_projects = Project.objects.filter(owner=request.user).order_by('-updated_at')[:3]
+    recent_simulations = Simulation.objects.filter(project__owner=request.user).order_by('-updated_at')[:3]
+    recent_hypotheses = Hypothesis.objects.filter(project__owner=request.user).order_by('-updated_at')[:3]
+    recent_literature = Literature.objects.filter(
+        Q(citations__paper__project__owner=request.user) |
+        Q(hypotheses__project__owner=request.user)
+    ).distinct().order_by('-updated_at')[:3]
+
+    # Combine and sort all recent activities
+    activities = []
+
+    for project in recent_projects:
+        activities.append({
+            'type': 'project',
+            'title': f'Created project "{project.name}"',
+            'timestamp': project.created_at,
+            'url': f'/projects/{project.pk}/',
+            'icon_color': 'bg-blue-600'
+        })
+
+    for sim in recent_simulations:
+        activities.append({
+            'type': 'simulation',
+            'title': f'Ran simulation "{sim.name}"',
+            'timestamp': sim.updated_at,
+            'url': f'/experiments/{sim.pk}/',
+            'icon_color': 'bg-green-600'
+        })
+
+    for hyp in recent_hypotheses:
+        activities.append({
+            'type': 'hypothesis',
+            'title': f'Added hypothesis "{hyp.title}"',
+            'timestamp': hyp.created_at,
+            'url': f'/projects/{hyp.project.pk}/?tab=hypotheses',
+            'icon_color': 'bg-purple-600'
+        })
+
+    for lit in recent_literature:
+        activities.append({
+            'type': 'literature',
+            'title': f'Added literature "{lit.title}"',
+            'timestamp': lit.created_at,
+            'url': f'/projects/{lit.citations.first().paper.project.pk}/?tab=literature' if lit.citations.exists() else '#',
+            'icon_color': 'bg-orange-600'
+        })
+
+    # Sort activities by timestamp (most recent first)
+    activities = sorted(activities, key=lambda x: x['timestamp'], reverse=True)[:5]
+
+    context = {
+        'projects_count': projects_count,
+        'literature_count': literature_count,
+        'experiments_count': experiments_count,
+        'activities': activities,
+    }
+
+    return render(request, 'dashboard.html', context)
 
 
 def signup(request):

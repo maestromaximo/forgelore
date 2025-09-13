@@ -103,13 +103,18 @@ class ExperimentSummary(BaseModel):
     status: str
 
 
+class KeyValue(BaseModel):
+    name: str
+    value: str
+
+
 class ExperimentDetail(BaseModel):
     id: int
     name: str
     description: str = ""
     code: str
     language: str
-    parameters: Optional[dict] = None
+    parameters: Optional[List[KeyValue]] = None
     status: str
 
 
@@ -131,6 +136,15 @@ class CreateHypothesisInput(BaseModel):
     project_id: int
     title: str
     statement: str
+
+
+class CreateExperimentInput(BaseModel):
+    project_id: int
+    name: str
+    description: str = ""
+    code: str = Field(description="Python code to run for the experiment")
+    language: str = Field(default="python")
+    parameters: Optional[List[KeyValue]] = None
 
 
 class UpdateHypothesisStatusInput(BaseModel):
@@ -317,14 +331,71 @@ def list_experiments(project_id: int) -> List[ExperimentSummary]:
 def get_experiment(experiment_id: int) -> ExperimentDetail:
     """Get a simulation/experiment details."""
     s = Simulation.objects.get(pk=experiment_id)
+    # Map parameters dict to list of KeyValue for structured output
+    param_items: Optional[List[KeyValue]] = None
+    if s.parameters and isinstance(s.parameters, dict):
+        param_items = [KeyValue(name=str(k), value=str(v)) for k, v in s.parameters.items()]
+
     return ExperimentDetail(
         id=s.id,
         name=s.name,
         description=s.description or "",
         code=s.code,
         language=s.language,
-        parameters=s.parameters,
+        parameters=param_items,
         status=s.status,
+    )
+
+
+@function_tool
+def create_experiment(input: CreateExperimentInput) -> ExperimentDetail:
+    """Create a simulation/experiment under a project."""
+    project = Project.objects.get(pk=input.project_id)
+    params_dict = None
+    if input.parameters:
+        params_dict = {item.name: item.value for item in input.parameters}
+
+    sim = Simulation.objects.create(
+        project=project,
+        name=input.name,
+        description=input.description or "",
+        code=input.code,
+        language=input.language,
+        parameters=params_dict,
+    )
+    return ExperimentDetail(
+        id=sim.id,
+        name=sim.name,
+        description=sim.description or "",
+        code=sim.code,
+        language=sim.language,
+        parameters=[KeyValue(name=str(k), value=str(v)) for k, v in (sim.parameters or {}).items()] if sim.parameters else None,
+        status=sim.status,
+    )
+
+
+@function_tool
+def run_experiment(experiment_id: int) -> ExperimentDetail:
+    """Execute a simulation/experiment and return updated details."""
+    sim = Simulation.objects.get(pk=experiment_id)
+    sim.status = "running"
+    sim.save(update_fields=["status", "updated_at"])
+    try:
+        sim.run(timeout_seconds=30)
+    finally:
+        sim.refresh_from_db()
+    param_items: Optional[List[KeyValue]] = None
+    if sim.parameters and isinstance(sim.parameters, dict):
+        param_items = [KeyValue(name=str(k), value=str(v)) for k, v in sim.parameters.items()]
+
+    return ExperimentDetail(
+        id=sim.id,
+        name=sim.name,
+        description=sim.description or "",
+        code=sim.code,
+        language=sim.language,
+        parameters=param_items,
+        status=sim.status,
     )
 
 
