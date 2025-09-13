@@ -3,6 +3,7 @@ import asyncio
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 from main.models import Project, Simulation, SimulationStatus
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 
 class ResearchServicesIntegrationTests(TestCase):
@@ -153,6 +154,38 @@ class SimulationRunTests(TestCase):
         sim.run(timeout_seconds=10)
         self.assertEqual(sim.status, SimulationStatus.FAILED)
         self.assertIsNotNone(sim.stderr)
+
+
+class ProjectCreateFlowTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="u2", password="pw")
+
+    def test_create_project_from_idea(self):
+        self.client.login(username="u2", password="pw")
+        resp = self.client.post('/projects/new/', data={
+            'name': 'IdeaProj',
+            'description': 'Just an idea',
+            'abstract': '',
+        })
+        self.assertEqual(resp.status_code, 302)
+        p = Project.objects.get(name='IdeaProj')
+        self.assertEqual(p.owner, self.user)
+        self.assertTrue(hasattr(p, 'paper'))
+
+    def test_create_project_with_txt_upload(self):
+        self.client.login(username="u2", password="pw")
+        content = b"This is a simple text paper. It should become content_raw."
+        upload = SimpleUploadedFile("draft.txt", content, content_type="text/plain")
+        resp = self.client.post('/projects/new/', data={
+            'name': 'UploadProj',
+            'description': '',
+            'abstract': '',
+            'paper_file': upload,
+        })
+        self.assertEqual(resp.status_code, 302)
+        p = Project.objects.get(name='UploadProj')
+        self.assertTrue(p.paper.content_raw.startswith("This is a simple text paper"))
 
 
 # Create your tests here.

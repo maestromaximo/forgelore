@@ -130,17 +130,54 @@ def projects_list(request):
 
 @login_required
 def projects_create(request):
+    class ProjectUploadForm(ProjectForm):
+        paper_file = forms.FileField(required=False, help_text="Optional. Upload a .pdf or .txt paper draft.")
+
+    def extract_text(file) -> str:
+        name = getattr(file, 'name', '') or ''
+        if name.lower().endswith('.txt'):
+            return file.read().decode('utf-8', errors='ignore')
+        # Fallback to PDF
+        try:
+            from pypdf import PdfReader
+            reader = PdfReader(file)
+            pages = []
+            for page in reader.pages:
+                try:
+                    pages.append(page.extract_text() or '')
+                except Exception:
+                    continue
+            return "\n\n".join(pages)
+        except Exception:
+            return ""
+
     if request.method == 'POST':
-        form = ProjectForm(request.POST)
+        form = ProjectUploadForm(request.POST, request.FILES)
         if form.is_valid():
             project = form.save(commit=False)
             project.owner = request.user
             project.save()
-            # Auto-create a Paper per project
-            Paper.objects.create(project=project, title=project.name, abstract=project.abstract)
+
+            # Create or update the associated paper
+            paper = Paper.objects.create(project=project, title=project.name, abstract=project.abstract)
+
+            uploaded = form.cleaned_data.get('paper_file')
+            if uploaded:
+                full_text = extract_text(uploaded)
+                # Placeholder: set first chars to abstract/description
+                snippet = (full_text or '')[:500]
+                paper.abstract = snippet[:300]
+                paper.content_raw = full_text
+                paper.save(update_fields=['abstract', 'content_raw', 'updated_at'])
+                if not project.abstract:
+                    project.abstract = paper.abstract
+                if not project.description:
+                    project.description = snippet
+                project.save(update_fields=['abstract', 'description', 'updated_at'])
+
             return redirect('projects_detail', pk=project.pk)
     else:
-        form = ProjectForm()
+        form = ProjectUploadForm()
     return render(request, 'projects_create.html', {'form': form})
 
 
