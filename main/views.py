@@ -10,6 +10,7 @@ from django.utils import timezone
 from .models import Simulation, Project, Paper, Hypothesis, Note, Literature, Citation, LiteratureSourceType, ProjectStatus, AutomationJob, AutomationTask, AutomationJobStatus, AutomationTaskStatus
 from django.http import JsonResponse
 import threading
+from .utils.transcriptions import transcribe_file_like
 
 
 
@@ -245,6 +246,33 @@ def experiments_run(request, pk: int):
     sim = Simulation.objects.get(pk=pk, project__owner=request.user)
     sim.run(timeout_seconds=30)
     return redirect('experiments_detail', pk=sim.pk)
+
+
+@login_required
+def transcribe_audio(request):
+    """Accept an uploaded audio blob and return a transcription as JSON.
+
+    Expects multipart/form-data with field name 'audio'. Optional 'prompt'.
+    """
+    if request.method != 'POST':
+        return JsonResponse({"error": "Method not allowed"}, status=405)
+
+    audio = request.FILES.get('audio') or request.FILES.get('file')
+    if not audio:
+        return JsonResponse({"error": "Missing audio file"}, status=400)
+
+    prompt = (request.POST.get('prompt') or '').strip() or None
+    try:
+        # Ensure file is at start
+        if hasattr(audio, 'seek'):
+            try:
+                audio.seek(0)
+            except Exception:
+                pass
+        text = transcribe_file_like(audio, response_format="json", prompt=prompt)
+        return JsonResponse({"text": text})
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
 
 
 class ProjectForm(forms.ModelForm):
