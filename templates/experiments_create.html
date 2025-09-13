@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}ForgeLore — New Experiment{% endblock %}
+
+{% block page_header %}
+<div>
+  <h1 class="text-xl font-semibold tracking-tight">New experiment</h1>
+  <p class="mt-1 text-sm text-gray-600">Provide code and parameters; tie it to a project.</p>
+  </div>
+{% endblock %}
+
+{% block content %}
+<form method="post" class="rounded-lg border border-gray-200 bg-white p-4">
+  {% csrf_token %}
+  <div class="grid grid-cols-1 gap-4">
+    {{ form.non_field_errors }}
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Project</label>
+      {{ form.project }}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Name</label>
+      {{ form.name }}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Description</label>
+      {{ form.description }}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Language</label>
+      {{ form.language }}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Parameters (JSON)</label>
+      {{ form.parameters }}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Code</label>
+      {{ form.code }}
+      <p class="mt-1 text-xs text-gray-500">Your code can call <code>record_result(data)</code> to save a JSON result. Access inputs via <code>params</code>.</p>
+    </div>
+  </div>
+  <div class="mt-4">
+    <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Create</button>
+  </div>
+</form>
+{% endblock %}
+
+

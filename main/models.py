@@ -203,6 +203,10 @@ class Simulation(TimestampedModel):
     def __str__(self) -> str:
         return self.name
 
+    def run(self, timeout_seconds: int = 30):
+        from .utils.experiment_utils import run_simulation
+        return run_simulation(self, timeout_seconds=timeout_seconds)
+
 
 def attachment_upload_path(instance: "Attachment", filename: str) -> str:
     return f"attachments/{filename}"

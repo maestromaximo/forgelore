@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}ForgeLore — Experiment Detail{% endblock %}
+
+{% block page_header %}
+<div class="flex items-center justify-between">
+  <div>
+    <h1 class="text-xl font-semibold tracking-tight">{{ simulation.name }}</h1>
+    <p class="mt-1 text-sm text-gray-600">Project: {{ simulation.project.name }}</p>
+  </div>
+  <form method="post" action="{% url 'experiments_run' pk=simulation.pk %}">
+    {% csrf_token %}
+    <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Run</button>
+  </form>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 gap-4">
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-sm font-semibold">Status</h2>
+    <p class="mt-1 text-sm text-gray-700">{{ simulation.status }}{% if simulation.exit_code is not None %} (exit {{ simulation.exit_code }}){% endif %}</p>
+    <p class="mt-1 text-xs text-gray-500">Started: {{ simulation.started_at|default:"—" }} · Finished: {{ simulation.finished_at|default:"—" }}</p>
+  </div>
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-sm font-semibold">Parameters</h2>
+    <pre class="mt-2 whitespace-pre-wrap text-xs">{{ simulation.parameters|default:{}|json_script:"sim_params" }}</pre>
+  </div>
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-sm font-semibold">Stdout</h2>
+    <pre class="mt-2 whitespace-pre-wrap text-xs">{{ simulation.stdout }}</pre>
+  </div>
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-sm font-semibold">Stderr</h2>
+    <pre class="mt-2 whitespace-pre-wrap text-xs">{{ simulation.stderr }}</pre>
+  </div>
+  <div class="rounded-lg border border-gray-200 bg-white p-4">
+    <h2 class="text-sm font-semibold">Result</h2>
+    <pre class="mt-2 whitespace-pre-wrap text-xs">{{ simulation.result_json }}</pre>
+  </div>
+</div>
+{% endblock %}
+
+

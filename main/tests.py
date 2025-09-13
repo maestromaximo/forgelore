@@ -1,6 +1,8 @@
 import os
 import asyncio
 from django.test import TestCase
+from django.contrib.auth import get_user_model
+from main.models import Project, Simulation, SimulationStatus
 
 
 class ResearchServicesIntegrationTests(TestCase):
@@ -115,6 +117,42 @@ class ResearchServicesIntegrationTests(TestCase):
                 self.skipTest(f"Aggregate API/network issue: {e}")
 
         asyncio.run(go())
+
+
+class SimulationRunTests(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(username="u1", password="pw")
+        self.project = Project.objects.create(owner=self.user, name="P1")
+
+    def test_run_python_simulation_success(self):
+        sim = Simulation.objects.create(
+            project=self.project,
+            name="SumTest",
+            code=(
+                "a = params.get('a', 1)\n"
+                "b = params.get('b', 2)\n"
+                "record_result({'sum': a + b})\n"
+                "print('done')\n"
+            ),
+            parameters={"a": 3, "b": 4},
+        )
+        sim.run(timeout_seconds=10)
+        self.assertEqual(sim.status, SimulationStatus.SUCCESS)
+        self.assertIsNotNone(sim.result_json)
+        self.assertEqual(sim.result_json.get('sum'), 7)
+        self.assertIn('done', sim.stdout)
+
+    def test_run_python_simulation_error(self):
+        sim = Simulation.objects.create(
+            project=self.project,
+            name="ErrorTest",
+            code=("raise ValueError('boom')\n"),
+            parameters={},
+        )
+        sim.run(timeout_seconds=10)
+        self.assertEqual(sim.status, SimulationStatus.FAILED)
+        self.assertIsNotNone(sim.stderr)
 
 
 # Create your tests here.
