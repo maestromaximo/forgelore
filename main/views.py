@@ -6,7 +6,7 @@ from django.shortcuts import redirect
 from asgiref.sync import async_to_sync
 from django import forms
 from django.db.models import Q
-from .models import Simulation, Project, Paper, Hypothesis, Note, Literature
+from .models import Simulation, Project, Paper, Hypothesis, Note, Literature, Citation, LiteratureSourceType
 
 
 
@@ -41,6 +41,8 @@ def literature_search(request):
     Query via GET param `q`. Shows grouped results by source.
     """
     query = request.GET.get('q', '').strip()
+    selected_project_id = request.GET.get('project') or None
+    user_projects = Project.objects.filter(owner=request.user).order_by('name')
     results_by_source = None
     error = None
     if query:
@@ -66,8 +68,61 @@ def literature_search(request):
         'query': query,
         'results_by_source': results_by_source,
         'error': error,
+        'projects': user_projects,
+        'selected_project_id': int(selected_project_id) if selected_project_id else None,
     }
     return render(request, 'literature_search.html', context)
+
+
+@login_required
+def literature_link_to_project(request, project_pk: int):
+    """Create or update a Literature entry from posted search result payload and link to the project's paper as a Citation.
+
+    Expected POST fields (best-effort, many optional): title, url, doi, arxiv_id, open_access_pdf_url, year, authors (comma-separated), venue, abstract
+    """
+    project = Project.objects.get(pk=project_pk, owner=request.user)
+    paper, _ = Paper.objects.get_or_create(project=project, defaults={'title': project.name, 'abstract': project.abstract})
+    if request.method == 'POST':
+        title = (request.POST.get('title') or '').strip() or 'Untitled'
+        doi = (request.POST.get('doi') or '').strip()
+        arxiv_id = (request.POST.get('arxiv_id') or '').strip()
+        url = (request.POST.get('url') or '').strip() or (request.POST.get('open_access_pdf_url') or '').strip()
+        year = request.POST.get('year') or None
+        abstract = request.POST.get('abstract') or ''
+        authors_list = (request.POST.get('authors') or '').strip()
+        venue = (request.POST.get('venue') or '').strip()
+
+        # Heuristic: prefer DOI, then arXiv id, else title+url
+        lit_q = Literature.objects.all()
+        if doi:
+            lit_q = lit_q.filter(doi=doi)
+        elif arxiv_id:
+            lit_q = lit_q.filter(arxiv_id=arxiv_id)
+        else:
+            lit_q = lit_q.filter(title=title, url=url)
+
+        literature = lit_q.first()
+        if not literature:
+            literature = Literature.objects.create(
+                title=title,
+                authors=authors_list,
+                journal_or_publisher=venue,
+                year=int(year) if (year and year.isdigit()) else None,
+                doi=doi,
+                arxiv_id=arxiv_id,
+                url=url,
+                source_type=LiteratureSourceType.DOI if doi else (LiteratureSourceType.ARXIV if arxiv_id else LiteratureSourceType.URL),
+                abstract=abstract,
+            )
+
+        # Link to paper via Citation (append to end)
+        last_order = paper.citations.aggregate_max = paper.citations.order_by('-order').first().order if paper.citations.exists() else 0
+        Citation.objects.create(paper=paper, literature=literature, order=last_order + 1)
+
+        # Redirect back to literature search, preserving q and project selection
+        q = request.GET.get('q') or ''
+        return redirect(f"/literature/search/?q={q}&project={project.pk}")
+    return redirect('literature_search')
 
 
 class SimulationForm(forms.ModelForm):

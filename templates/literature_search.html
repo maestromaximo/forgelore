@@ -18,6 +18,13 @@
     <label for="q" class="sr-only">Query</label>
     <input type="text" id="q" name="q" value="{{ query }}" placeholder="e.g. quantum error correction" class="w-full rounded-md border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-600 focus:ring-brand-600">
     <input type="email" id="mailto" name="mailto" value="{{ request.GET.mailto }}" placeholder="mailto (optional)" class="w-64 rounded-md border-gray-300 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-600 focus:ring-brand-600">
+    <label for="project" class="sr-only">Project</label>
+    <select id="project" name="project" class="w-64 rounded-md border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-600 focus:ring-brand-600">
+      <option value="">Select project (optional)</option>
+      {% for p in projects %}
+        <option value="{{ p.pk }}" {% if selected_project_id == p.pk %}selected{% endif %}>{{ p.name }}</option>
+      {% endfor %}
+    </select>
     <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Search</button>
   </div>
 </form>
@@ -49,6 +56,21 @@
               <div class="mt-1 flex items-center gap-3 text-xs">
                 {% if r.url %}<a href="{{ r.url }}" target="_blank" class="text-brand-700 hover:underline">View</a>{% endif %}
                 {% if r.open_access_pdf_url %}<a href="{{ r.open_access_pdf_url }}" target="_blank" class="text-brand-700 hover:underline">PDF</a>{% endif %}
+                {% if selected_project_id %}
+                  <form method="post" action="{% url 'literature_link_to_project' project_pk=selected_project_id %}?q={{ query|urlencode }}" class="inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="title" value="{{ r.title }}">
+                    <input type="hidden" name="doi" value="{{ r.doi }}">
+                    <input type="hidden" name="arxiv_id" value="{{ r.arxiv_id }}">
+                    <input type="hidden" name="url" value="{{ r.url }}">
+                    <input type="hidden" name="open_access_pdf_url" value="{{ r.open_access_pdf_url }}">
+                    <input type="hidden" name="year" value="{{ r.year }}">
+                    <input type="hidden" name="venue" value="{{ r.venue }}">
+                    <input type="hidden" name="authors" value="{% if r.authors %}{% for a in r.authors %}{% if not forloop.first %}, {% endif %}{{ a.name }}{% endfor %}{% endif %}">
+                    <input type="hidden" name="abstract" value="{{ r.abstract }}">
+                    <button type="submit" class="inline-flex items-center rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-800 hover:bg-gray-50">Link to project</button>
+                  </form>
+                {% endif %}
               </div>
             </div>
           {% empty %}
