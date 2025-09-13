@@ -34,13 +34,6 @@
       </li>
       <li>
         <a href="#" class="group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900">
-          <!-- Icon: Document Text -->
-          <svg class="h-5 w-5 text-gray-400 group-hover:text-gray-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M17 6.414V16a2 2 0 01-2 2H5a2 2 0 01-2-2V4a2 2 0 012-2h6.586a2 2 0 011.414.586l3.414 3.414A2 2 0 0117 6.414zM9 8a1 1 0 100 2h4a1 1 0 100-2H9zM7 12a1 1 0 011-1h6a1 1 0 110 2H8a1 1 0 01-1-1z"/></svg>
-          <span>Drafts</span>
-        </a>
-      </li>
-      <li>
-        <a href="#" class="group flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-gray-900">
           <!-- Icon: Folder -->
           <svg class="h-5 w-5 text-gray-400 group-hover:text-gray-600" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M2 6a2 2 0 012-2h3.5a1 1 0 01.8.4l1.5 2A1 1 0 0011.5 7H16a2 2 0 012 2v5a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"/></svg>
           <span>Projects</span>
@@ -65,7 +58,10 @@
 
 <div class="border-t border-gray-200 p-4 text-xs text-gray-500">
   <p>Signed in</p>
-  <a href="/logout/" class="mt-2 inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 font-medium hover:bg-gray-50">Sign out</a>
+  <form method="post" action="{% url 'logout' %}">
+    {% csrf_token %}
+    <button type="submit" class="mt-2 inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 font-medium hover:bg-gray-50">Sign out</button>
+  </form>
 </div>
 
 
