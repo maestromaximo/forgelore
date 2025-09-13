@@ -346,13 +346,48 @@
     const init = (document.getElementById('project-tabs')?.dataset?.initialTab) || 'overview';
     selectTab(init);
 
-    // Live preview for paper
+    // Live preview for paper with light preprocessing of plain text into Markdown
+    function preprocessToMarkdown(raw) {
+      if (!raw) return '';
+      let text = String(raw).replace(/\r\n/g, '\n');
+
+      // Promote common section labels to headings
+      text = text.replace(/(^|\n)\s*Abstract\s*(\n+)/gi, '\n\n## Abstract\n\n');
+      text = text.replace(/(^|\n)\s*Contents\s*(\n+)/gi, '\n\n## Contents\n\n');
+      text = text.replace(/(^|\n)\s*Conclusion(s)?\s*(\n+)/gi, '\n\n## Conclusion\n\n');
+      text = text.replace(/(^|\n)\s*Introduction\s*(\n+)/gi, '\n\n## Introduction\n\n');
+      text = text.replace(/(^|\n)\s*Remarks:\s*/gi, '\n\n### Remarks\n');
+
+      // Convert [Bracketed Titles] to subheadings
+      text = text.replace(/^\s*\[([^\]]+)\]\s*$/gm, '### $1');
+
+      // Section numbering like `1 Title` or `6.1 Example: ...`
+      text = text.replace(/^(\d+(?:\.\d+)*)\s+(.+)$/gm, function(_, num, title) {
+        // If line already looks like a figure/table number, skip
+        if (/^\d+$/.test(title.trim())) return `${num} ${title}`;
+        const level = num.indexOf('.') !== -1 ? 3 : 2;
+        return `${'#'.repeat(level)} ${num} ${title}`;
+      });
+
+      // Bullets like `• item` → `- item`
+      text = text.replace(/^\s*[•]\s*/gm, '- ');
+
+      // Ensure blank line before headings for markdown parsers
+      text = text.replace(/([^\n])\n(#{2,6}\s)/g, '$1\n\n$2');
+
+      return text;
+    }
+
     function renderPreview() {
       const src = document.getElementById('paper-content');
       const out = document.getElementById('paper-preview');
       if (!src || !out || !window.marked || !window.DOMPurify) return;
       const raw = src.value || '';
-      const html = DOMPurify.sanitize(marked.parse(raw));
+      const md = preprocessToMarkdown(raw);
+      if (window.marked && marked.setOptions) {
+        marked.setOptions({ gfm: true, breaks: true });
+      }
+      const html = DOMPurify.sanitize(marked.parse(md));
       out.innerHTML = html;
       if (window.MathJax && MathJax.typesetPromise) {
         MathJax.typesetPromise([out]).catch(() => {});
