@@ -4,3 +4,4 @@ openai-agents[litellm]
 python-dotenv
 Django
 tqdm
+httpx
