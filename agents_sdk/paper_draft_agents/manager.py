@@ -27,7 +27,7 @@ class PaperDraftServiceManager:
         project = Project.objects.get(pk=project_id)
         paper, _ = Paper.objects.get_or_create(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
-        result = await self.runner.run(drafting_agent, input=f"Project: {project.name}\nObjective: {paper.abstract or project.abstract or ''}")
+        result = await self.runner.run(drafting_agent, f"Project: {project.name}\nObjective: {paper.abstract or project.abstract or ''}")
         sections: DraftSections = result.final_output  # type: ignore
 
         updated = False

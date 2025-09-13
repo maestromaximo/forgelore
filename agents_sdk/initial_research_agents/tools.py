@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import List, Optional
-from asgiref.sync import async_to_sync
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -10,6 +9,7 @@ from agents import function_tool
 from main.models import Project, Paper, Literature, Citation, Simulation, Hypothesis, HypothesisStatus as DjangoHypothesisStatus, Note
 from main.research_services import HttpClient, search_all
 from main.research_services.types import PaperRecord, asdict_record
+from asgiref.sync import sync_to_async
 
 
 # ==========================
@@ -169,29 +169,22 @@ class CreateNoteInput(BaseModel):
 # ======
 
 @function_tool
-def literature_search(input: SearchInput) -> SearchResults:
+async def literature_search(input: SearchInput) -> SearchResults:
     """Search literature across providers (arXiv/OpenAlex/DOAJ/Semantic Scholar).
 
     Returns structured results grouped by provider.
     """
 
-    def _run():
-        async def go():
-            client = HttpClient()
-            try:
-                grouped = await search_all(
-                    client,
-                    query=input.query,
-                    limit_per_source=input.limit_per_source,
-                    mailto=None,
-                )
-                return grouped
-            finally:
-                await client.aclose()
-
-        return async_to_sync(go)()
-
-    grouped = _run()
+    client = HttpClient()
+    try:
+        grouped = await search_all(
+            client,
+            query=input.query,
+            limit_per_source=input.limit_per_source,
+            mailto=None,
+        )
+    finally:
+        await client.aclose()
     source_results: List[SearchSourceResults] = []
     for provider, records in (grouped or {}).items():
         items: List[SearchResultItem] = []
@@ -216,44 +209,41 @@ def literature_search(input: SearchInput) -> SearchResults:
     return SearchResults(results=source_results)
 
 
-@function_tool
-def list_literature(project_id: int) -> List[LiteratureMeta]:
-    """List literature linked to the project's paper (via citations)."""
+def _list_literature_sync(project_id: int) -> List[LiteratureMeta]:
     project = Project.objects.get(pk=project_id)
     try:
         paper = project.paper
     except Paper.DoesNotExist:
         return []
-
     results: List[LiteratureMeta] = []
     for cit in paper.citations.select_related('literature').order_by('order'):
         lit = cit.literature
-        results.append(
-            LiteratureMeta(
-                id=lit.id,
-                title=lit.title,
-                year=lit.year,
-                doi=lit.doi or None,
-                arxiv_id=lit.arxiv_id or None,
-                url=lit.url or None,
-                source_type=lit.source_type,
-            )
-        )
+        results.append(LiteratureMeta(
+            id=lit.id,
+            title=lit.title,
+            year=lit.year,
+            doi=lit.doi or None,
+            arxiv_id=lit.arxiv_id or None,
+            url=lit.url or None,
+            source_type=lit.source_type,
+        ))
     return results
 
 
 @function_tool
-def read_literature(request: LiteratureReadRequest) -> LiteratureReadResult:
-    """Read literature text up to a maximum number of characters (abstract + full text)."""
+async def list_literature(project_id: int) -> List[LiteratureMeta]:
+    """List literature linked to the project's paper (via citations)."""
+    return await sync_to_async(_list_literature_sync)(project_id)
+
+
+def _read_literature_sync(request: LiteratureReadRequest) -> LiteratureReadResult:
     lit = Literature.objects.get(pk=request.literature_id)
     blocks: List[str] = []
     if request.include_abstract and lit.abstract:
         blocks.append(lit.abstract.strip())
     if lit.full_text:
         blocks.append(lit.full_text.strip())
-    content = ("\n\n".join(blocks)).strip()
-    if not content:
-        content = ""
+    content = ("\n\n".join(blocks)).strip() or ""
     if len(content) > request.max_chars:
         content = content[: request.max_chars]
     return LiteratureReadResult(
@@ -268,7 +258,12 @@ def read_literature(request: LiteratureReadRequest) -> LiteratureReadResult:
 
 
 @function_tool
-def link_literature(input: LinkLiteratureInput) -> LinkLiteratureResult:
+async def read_literature(request: LiteratureReadRequest) -> LiteratureReadResult:
+    """Read literature text up to a maximum number of characters (abstract + full text)."""
+    return await sync_to_async(_read_literature_sync)(request)
+
+
+def _link_literature_sync(input: LinkLiteratureInput) -> LinkLiteratureResult:
     """Create or link a Literature entry to the project's paper via a Citation.
 
     De-duplicates by DOI, then arXiv ID, else (title+url).
@@ -304,7 +299,11 @@ def link_literature(input: LinkLiteratureInput) -> LinkLiteratureResult:
 
 
 @function_tool
-def get_paper(project_id: int) -> PaperModel:
+async def link_literature(input: LinkLiteratureInput) -> LinkLiteratureResult:
+    return await sync_to_async(_link_literature_sync)(input)
+
+
+def _get_paper_sync(project_id: int) -> PaperModel:
     """Get the project's Paper (creating a default if missing)."""
     project = Project.objects.get(pk=project_id)
     paper, _ = Paper.objects.get_or_create(project=project, defaults={'title': project.name, 'abstract': project.abstract})
@@ -318,65 +317,49 @@ def get_paper(project_id: int) -> PaperModel:
 
 
 @function_tool
-def list_experiments(project_id: int) -> List[ExperimentSummary]:
-    """List simulations/experiments for a project."""
+async def get_paper(project_id: int) -> PaperModel:
+    return await sync_to_async(_get_paper_sync)(project_id)
+
+
+def _list_experiments_sync(project_id: int) -> List[ExperimentSummary]:
     sims = Simulation.objects.filter(project_id=project_id).order_by('-updated_at')
-    return [
-        ExperimentSummary(id=s.id, name=s.name, description=s.description or "", status=s.status)
-        for s in sims
-    ]
+    return [ExperimentSummary(id=s.id, name=s.name, description=s.description or "", status=s.status) for s in sims]
 
 
 @function_tool
-def get_experiment(experiment_id: int) -> ExperimentDetail:
-    """Get a simulation/experiment details."""
+async def list_experiments(project_id: int) -> List[ExperimentSummary]:
+    """List simulations/experiments for a project."""
+    return await sync_to_async(_list_experiments_sync)(project_id)
+
+
+def _get_experiment_sync(experiment_id: int) -> ExperimentDetail:
     s = Simulation.objects.get(pk=experiment_id)
-    # Map parameters dict to list of KeyValue for structured output
     param_items: Optional[List[KeyValue]] = None
     if s.parameters and isinstance(s.parameters, dict):
         param_items = [KeyValue(name=str(k), value=str(v)) for k, v in s.parameters.items()]
-
-    return ExperimentDetail(
-        id=s.id,
-        name=s.name,
-        description=s.description or "",
-        code=s.code,
-        language=s.language,
-        parameters=param_items,
-        status=s.status,
-    )
+    return ExperimentDetail(id=s.id, name=s.name, description=s.description or "", code=s.code, language=s.language, parameters=param_items, status=s.status)
 
 
 @function_tool
-def create_experiment(input: CreateExperimentInput) -> ExperimentDetail:
-    """Create a simulation/experiment under a project."""
+async def get_experiment(experiment_id: int) -> ExperimentDetail:
+    """Get a simulation/experiment details."""
+    return await sync_to_async(_get_experiment_sync)(experiment_id)
+
+
+def _create_experiment_sync(input: CreateExperimentInput) -> ExperimentDetail:
     project = Project.objects.get(pk=input.project_id)
-    params_dict = None
-    if input.parameters:
-        params_dict = {item.name: item.value for item in input.parameters}
-
-    sim = Simulation.objects.create(
-        project=project,
-        name=input.name,
-        description=input.description or "",
-        code=input.code,
-        language=input.language,
-        parameters=params_dict,
-    )
-    return ExperimentDetail(
-        id=sim.id,
-        name=sim.name,
-        description=sim.description or "",
-        code=sim.code,
-        language=sim.language,
-        parameters=[KeyValue(name=str(k), value=str(v)) for k, v in (sim.parameters or {}).items()] if sim.parameters else None,
-        status=sim.status,
-    )
+    params_dict = {item.name: item.value for item in (input.parameters or [])} if input.parameters else None
+    sim = Simulation.objects.create(project=project, name=input.name, description=input.description or "", code=input.code, language=input.language, parameters=params_dict)
+    return _get_experiment_sync(sim.id)
 
 
 @function_tool
-def run_experiment(experiment_id: int) -> ExperimentDetail:
-    """Execute a simulation/experiment and return updated details."""
+async def create_experiment(input: CreateExperimentInput) -> ExperimentDetail:
+    """Create a simulation/experiment under a project."""
+    return await sync_to_async(_create_experiment_sync)(input)
+
+
+def _run_experiment_sync(experiment_id: int) -> ExperimentDetail:
     sim = Simulation.objects.get(pk=experiment_id)
     sim.status = "running"
     sim.save(update_fields=["status", "updated_at"])
@@ -384,49 +367,29 @@ def run_experiment(experiment_id: int) -> ExperimentDetail:
         sim.run(timeout_seconds=30)
     finally:
         sim.refresh_from_db()
-    param_items: Optional[List[KeyValue]] = None
-    if sim.parameters and isinstance(sim.parameters, dict):
-        param_items = [KeyValue(name=str(k), value=str(v)) for k, v in sim.parameters.items()]
-
-    return ExperimentDetail(
-        id=sim.id,
-        name=sim.name,
-        description=sim.description or "",
-        code=sim.code,
-        language=sim.language,
-        parameters=param_items,
-        status=sim.status,
-    )
+    return _get_experiment_sync(sim.id)
 
 
 @function_tool
-def list_hypotheses(project_id: int) -> List[HypothesisModel]:
-    """List hypotheses for a project."""
+async def run_experiment(experiment_id: int) -> ExperimentDetail:
+    """Execute a simulation/experiment and return updated details."""
+    return await sync_to_async(_run_experiment_sync)(experiment_id)
+
+
+def _list_hypotheses_sync(project_id: int) -> List[HypothesisModel]:
     items = Hypothesis.objects.filter(project_id=project_id).order_by('-updated_at')
-    results: List[HypothesisModel] = []
-    for h in items:
-        results.append(
-            HypothesisModel(
-                id=h.id,
-                title=h.title,
-                statement=h.statement,
-                status=HypothesisStatus(h.status),
-            )
-        )
-    return results
+    return [HypothesisModel(id=h.id, title=h.title, statement=h.statement, status=HypothesisStatus(h.status)) for h in items]
 
 
 @function_tool
-def create_hypothesis(input: CreateHypothesisInput) -> HypothesisModel:
-    """Create a hypothesis under the project (auto-links to the project's paper if present)."""
+async def list_hypotheses(project_id: int) -> List[HypothesisModel]:
+    """List hypotheses for a project."""
+    return await sync_to_async(_list_hypotheses_sync)(project_id)
+
+
+def _create_hypothesis_sync(input: CreateHypothesisInput) -> HypothesisModel:
     project = Project.objects.get(pk=input.project_id)
-    h = Hypothesis.objects.create(
-        project=project,
-        title=input.title,
-        statement=input.statement,
-        status=DjangoHypothesisStatus.PROPOSED,
-    )
-    # Best-effort link to paper
+    h = Hypothesis.objects.create(project=project, title=input.title, statement=input.statement, status=DjangoHypothesisStatus.PROPOSED)
     try:
         h.paper = project.paper
         h.save(update_fields=['paper'])
@@ -436,8 +399,12 @@ def create_hypothesis(input: CreateHypothesisInput) -> HypothesisModel:
 
 
 @function_tool
-def update_hypothesis_status(input: UpdateHypothesisStatusInput) -> HypothesisModel:
-    """Update hypothesis status."""
+async def create_hypothesis(input: CreateHypothesisInput) -> HypothesisModel:
+    """Create a hypothesis under the project (auto-links to the project's paper if present)."""
+    return await sync_to_async(_create_hypothesis_sync)(input)
+
+
+def _update_hypothesis_status_sync(input: UpdateHypothesisStatusInput) -> HypothesisModel:
     h = Hypothesis.objects.get(pk=input.hypothesis_id)
     h.status = input.status.value
     h.save(update_fields=['status', 'updated_at'])
@@ -445,35 +412,52 @@ def update_hypothesis_status(input: UpdateHypothesisStatusInput) -> HypothesisMo
 
 
 @function_tool
-def create_note(input: CreateNoteInput) -> NoteModel:
-    """Create a project note."""
+async def update_hypothesis_status(input: UpdateHypothesisStatusInput) -> HypothesisModel:
+    """Update hypothesis status."""
+    return await sync_to_async(_update_hypothesis_status_sync)(input)
+
+
+def _create_note_sync(input: CreateNoteInput) -> NoteModel:
     project = Project.objects.get(pk=input.project_id)
     note = Note.objects.create(project=project, title=input.title, body=input.body)
     return NoteModel(id=note.id, title=note.title, body=note.body)
 
 
 @function_tool
-def get_note(note_id: int) -> NoteModel:
-    """Get a note by id."""
-    note = Note.objects.get(pk=note_id)
-    return NoteModel(id=note.id, title=note.title, body=note.body)
+async def create_note(input: CreateNoteInput) -> NoteModel:
+    """Create a project note."""
+    return await sync_to_async(_create_note_sync)(input)
 
 
 @function_tool
-def list_notes(project_id: int) -> List[NoteModel]:
-    """List notes for a project."""
+async def get_note(note_id: int) -> NoteModel:
+    """Get a note by id."""
+    return await sync_to_async(lambda: NoteModel(id=Note.objects.get(pk=note_id).id, title=Note.objects.get(pk=note_id).title, body=Note.objects.get(pk=note_id).body))()
+
+
+def _list_notes_sync(project_id: int) -> List[NoteModel]:
     notes = Note.objects.filter(project_id=project_id).order_by('-updated_at')
     return [NoteModel(id=n.id, title=n.title, body=n.body) for n in notes]
 
 
 @function_tool
-def update_note(note_id: int, title: str, body: str) -> NoteModel:
-    """Update a note's title and body."""
+async def list_notes(project_id: int) -> List[NoteModel]:
+    """List notes for a project."""
+    return await sync_to_async(_list_notes_sync)(project_id)
+
+
+def _update_note_sync(note_id: int, title: str, body: str) -> NoteModel:
     note = Note.objects.get(pk=note_id)
     note.title = title
     note.body = body
     note.save(update_fields=['title', 'body', 'updated_at'])
     return NoteModel(id=note.id, title=note.title, body=note.body)
+
+
+@function_tool
+async def update_note(note_id: int, title: str, body: str) -> NoteModel:
+    """Update a note's title and body."""
+    return await sync_to_async(_update_note_sync)(note_id, title, body)
 
 
 

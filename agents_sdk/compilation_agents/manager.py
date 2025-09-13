@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import List
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from pydantic import BaseModel
 from agents import Runner
 
@@ -23,10 +23,10 @@ class CompilationServiceManager:
         self.runner = Runner()
 
     async def process(self, project_id: int) -> CompilationOutput:
-        project = Project.objects.get(pk=project_id)
-        paper, _ = Paper.objects.get_or_create(project=project, defaults={'title': project.name, 'abstract': project.abstract})
+        project = await sync_to_async(Project.objects.get)(pk=project_id)
+        paper, _ = await sync_to_async(Paper.objects.get_or_create)(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
-        result = await self.runner.run(compilation_agent, input=f"Project: {project.name}")
+        result = await self.runner.run(compilation_agent, f"Project: {project.name}")
         plan: CompilationPlan = result.final_output  # type: ignore
 
         applied = 0
@@ -38,7 +38,7 @@ class CompilationServiceManager:
 
         if applied:
             paper.content_raw = content
-            paper.save(update_fields=['content_raw', 'updated_at'])
+            await sync_to_async(paper.save)(update_fields=['content_raw', 'updated_at'])
 
         return CompilationOutput(project_id=project.id, paper_id=paper.id, applied_diffs=applied)
 

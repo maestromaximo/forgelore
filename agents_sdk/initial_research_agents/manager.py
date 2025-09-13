@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import random
+import inspect
 from typing import List, Optional
 
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
 from pydantic import BaseModel, Field
 
 from agents import Runner
@@ -14,6 +15,8 @@ from .tools import (
     PaperModel,
     ExperimentSummary,
     HypothesisModel,
+)
+from .utilities import (
     list_experiments,
     list_literature,
 )
@@ -45,48 +48,48 @@ class InitialResearchServiceManager:
         self.runner = Runner()
 
     async def process(self, project_id: int) -> InitialResearchOutput:
-        project = Project.objects.get(pk=project_id)
-        paper, _ = Paper.objects.get_or_create(project=project, defaults={
-            'title': project.name,
-            'abstract': project.abstract,
-        })
+        project = await sync_to_async(Project.objects.get)(pk=project_id)
+        paper, _ = await sync_to_async(Paper.objects.get_or_create)(
+            project=project,
+            defaults={'title': project.name, 'abstract': project.abstract},
+        )
 
         # Gather context summaries
-        experiments: List[ExperimentSummary] = list_experiments(project_id)
-        literature_meta = list_literature(project_id)
+        experiments: List[ExperimentSummary] = await list_experiments(project_id)
+        literature_meta = await list_literature(project_id)
 
         # Step 1: Formalize
         formalizer_input = self._build_formalizer_prompt(project, paper, experiments, literature_meta)
-        formalizer_result = await self.runner.run(
+        formalizer_result = await self._run(
             formalizer_agent,
-            input=formalizer_input,
+            formalizer_input,
         )
         formalized: FormalizedAsk = formalizer_result.final_output  # type: ignore
 
         improved_abstract = (formalized.improved_abstract or '').strip()
         if improved_abstract and improved_abstract != (paper.abstract or '').strip():
             paper.abstract = improved_abstract
-            paper.save(update_fields=['abstract', 'updated_at'])
+            await sync_to_async(paper.save)(update_fields=['abstract', 'updated_at'])
 
         # Step 2: Literature review (agent uses tools to search/link)
         reviewer_input = self._build_reviewer_prompt(project, paper, formalized, literature_meta)
-        await self.runner.run(literature_reviewer_agent, input=reviewer_input)
+        await self._run(literature_reviewer_agent, reviewer_input)
 
         # Refresh literature after potential linking
-        literature_meta = list_literature(project_id)
+        literature_meta = await list_literature(project_id)
 
         # Step 3: Literature summarization (agent reads via tools)
         summarizer_input = self._build_summarizer_prompt(project, paper, formalized, literature_meta)
-        summarizer_result = await self.runner.run(literature_summarizer_agent, input=summarizer_input)
+        summarizer_result = await self._run(literature_summarizer_agent, summarizer_input)
         summary: ProjectFocusedSummary = summarizer_result.final_output  # type: ignore
 
         # Save as Note with a 4-digit id suffix in title
         note_title = f"Literature Summary {random.randint(1000, 9999)}"
-        note = Note.objects.create(project=project, title=note_title, body=summary.combined_summary)
+        note = await sync_to_async(Note.objects.create)(project=project, title=note_title, body=summary.combined_summary)
 
         # Step 4: Hypothesis generation (agent can create hypotheses via tools)
         hypothesizer_input = self._build_hypothesizer_prompt(project, paper, formalized, literature_meta, experiments)
-        hypotheses_result = await self.runner.run(hypothesizer_agent, input=hypothesizer_input)
+        hypotheses_result = await self._run(hypothesizer_agent, hypothesizer_input)
         hypotheses_output: HypothesesOutput = hypotheses_result.final_output  # type: ignore
 
         # Return snapshot of created/updated items
@@ -105,6 +108,13 @@ class InitialResearchServiceManager:
             return await self.process(project_id)
 
         return async_to_sync(go)()
+
+    async def _run(self, *args, **kwargs):
+        """Call Runner.run and support both async and sync mocks."""
+        result = self.runner.run(*args, **kwargs)
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
     def _build_formalizer_prompt(
         self,

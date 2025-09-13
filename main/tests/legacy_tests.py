@@ -1,9 +1,10 @@
-import os
-import asyncio
 from django.test import TestCase
 from django.contrib.auth import get_user_model
-from main.models import Project, Simulation, SimulationStatus
 from django.core.files.uploadedfile import SimpleUploadedFile
+import os
+import asyncio
+
+from main.models import Project, Simulation, SimulationStatus
 
 
 class ResearchServicesIntegrationTests(TestCase):
@@ -110,7 +111,6 @@ class ResearchServicesIntegrationTests(TestCase):
                     await client.aclose()
 
                 self.assertIsInstance(results_by_src, dict)
-                # Ensure keys exist
                 for key in ("arxiv", "doaj", "semanticscholar", "openalex"):
                     self.assertIn(key, results_by_src)
                     self.assertIsInstance(results_by_src[key], list)
@@ -186,6 +186,3 @@ class ProjectCreateFlowTests(TestCase):
         self.assertEqual(resp.status_code, 302)
         p = Project.objects.get(name='UploadProj')
         self.assertTrue(p.paper.content_raw.startswith("This is a simple text paper"))
-
-
-# Create your tests here.
