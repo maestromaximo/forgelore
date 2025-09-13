@@ -13,6 +13,10 @@ urlpatterns = [
     path('experiments/new/', views.experiments_create, name='experiments_create'),
     path('experiments/<int:pk>/', views.experiments_detail, name='experiments_detail'),
     path('experiments/<int:pk>/run/', views.experiments_run, name='experiments_run'),
+    path('projects/', views.projects_list, name='projects_list'),
+    path('projects/new/', views.projects_create, name='projects_create'),
+    path('projects/<int:pk>/', views.projects_detail, name='projects_detail'),
+    path('projects/<int:pk>/paper/update/', views.projects_update_paper, name='projects_update_paper'),
 ]
 
 from django.urls import path
@@ -30,4 +34,8 @@ urlpatterns = [
     path('experiments/new/', views.experiments_create, name='experiments_create'),
     path('experiments/<int:pk>/', views.experiments_detail, name='experiments_detail'),
     path('experiments/<int:pk>/run/', views.experiments_run, name='experiments_run'),
+    path('projects/', views.projects_list, name='projects_list'),
+    path('projects/new/', views.projects_create, name='projects_create'),
+    path('projects/<int:pk>/', views.projects_detail, name='projects_detail'),
+    path('projects/<int:pk>/paper/update/', views.projects_update_paper, name='projects_update_paper'),
 ]

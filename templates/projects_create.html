@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}ForgeLore — New Project{% endblock %}
+
+{% block page_header %}
+<div class="flex items-center justify-between">
+  <div>
+    <h1 class="text-xl font-semibold tracking-tight">New project</h1>
+    <p class="mt-1 text-sm text-gray-600">Create a project; a paper is auto-created.</p>
+  </div>
+  <a href="{% url 'projects_list' %}" class="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50">Back to Projects</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<form method="post" class="rounded-lg border border-gray-200 bg-white p-4">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+  <div class="grid grid-cols-1 gap-4">
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Name</label>
+      {{ form.name }}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Abstract</label>
+      {{ form.abstract }}
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-gray-700">Description</label>
+      {{ form.description }}
+    </div>
+  </div>
+  <div class="mt-4">
+    <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Create</button>
+  </div>
+</form>
+{% endblock %}
+
+
