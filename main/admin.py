@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Project, Paper, PaperSection, Literature, Citation,
-    Hypothesis, Note, Simulation, Attachment
+    Hypothesis, Note, Simulation, Attachment,
+    AutomationJob, AutomationTask
 )
 
 
@@ -84,3 +85,27 @@ class AttachmentAdmin(admin.ModelAdmin):
     search_fields = ('label', 'text_content', 'mime_type')
     readonly_fields = ('created_at', 'updated_at')
     ordering = ('-updated_at',)
+
+
+@admin.register(AutomationJob)
+class AutomationJobAdmin(admin.ModelAdmin):
+    list_display = ('id', 'project', 'status', 'started_at', 'finished_at', 'created_at')
+    list_filter = ('status', 'created_at', 'started_at', 'finished_at')
+    search_fields = ('project__name', 'message')
+    readonly_fields = ('created_at', 'updated_at', 'started_at', 'finished_at')
+    ordering = ('-created_at',)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('project')
+
+
+@admin.register(AutomationTask)
+class AutomationTaskAdmin(admin.ModelAdmin):
+    list_display = ('name', 'job', 'status', 'progress', 'started_at', 'finished_at', 'created_at')
+    list_filter = ('status', 'created_at', 'started_at', 'finished_at')
+    search_fields = ('name', 'message', 'job__project__name')
+    readonly_fields = ('created_at', 'updated_at', 'started_at', 'finished_at')
+    ordering = ('-created_at',)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('job__project')

@@ -424,7 +424,7 @@
     // Automation status polling
     async function fetchAutomation() {
       try {
-        const res = await fetch(`/projects/${{{ project.pk }}}/automation/status/`, { headers: { 'Accept': 'application/json' } });
+        const res = await fetch("{% url 'project_automation_status' pk=project.pk %}", { headers: { 'Accept': 'application/json' } });
         const data = await res.json();
         const el = document.getElementById('automation-status');
         if (!el) return;
