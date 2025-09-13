@@ -5,8 +5,8 @@ from django.contrib.auth.forms import UserCreationForm
 from django.shortcuts import redirect
 from asgiref.sync import async_to_sync
 from django import forms
-from django.db.models import Q
-from .models import Simulation, Project, Paper, Hypothesis, Note, Literature, Citation, LiteratureSourceType
+from django.db.models import Q, Count
+from .models import Simulation, Project, Paper, Hypothesis, Note, Literature, Citation, LiteratureSourceType, ProjectStatus
 
 
 
@@ -25,6 +25,17 @@ def dashboard(request):
         Q(hypotheses__project__owner=request.user)
     ).distinct().count()
     experiments_count = Simulation.objects.filter(project__owner=request.user).count()
+
+    # Active projects overview with per-project metrics
+    active_projects = (
+        Project.objects.filter(owner=request.user, status=ProjectStatus.ACTIVE)
+        .annotate(
+            experiments_count=Count('simulations', distinct=True),
+            hypotheses_count=Count('hypotheses', distinct=True),
+            citations_count=Count('paper__citations', distinct=True),
+        )
+        .order_by('-updated_at')[:5]
+    )
 
     # Get recent activity (last 5 items from different models)
     recent_projects = Project.objects.filter(owner=request.user).order_by('-updated_at')[:3]
@@ -82,6 +93,7 @@ def dashboard(request):
         'literature_count': literature_count,
         'experiments_count': experiments_count,
         'activities': activities,
+        'active_projects': active_projects,
     }
 
     return render(request, 'dashboard.html', context)
