@@ -167,6 +167,21 @@ class Hypothesis(TimestampedModel):
         return self.title
 
 
+class Note(TimestampedModel):
+    """Lightweight note attached to a Project (meeting notes, ideas, todos)."""
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="notes")
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True)
+    pinned = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-pinned", "-updated_at", "-id"]
+
+    def __str__(self) -> str:
+        return self.title
+
+
 class SimulationStatus(models.TextChoices):
     DRAFT = "draft", "Draft"
     PENDING = "pending", "Pending"

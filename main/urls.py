@@ -17,6 +17,8 @@ urlpatterns = [
     path('projects/new/', views.projects_create, name='projects_create'),
     path('projects/<int:pk>/', views.projects_detail, name='projects_detail'),
     path('projects/<int:pk>/paper/update/', views.projects_update_paper, name='projects_update_paper'),
+    path('projects/<int:pk>/notes/add/', views.projects_add_note, name='projects_add_note'),
+    path('projects/<int:pk>/hypotheses/add/', views.projects_add_hypothesis, name='projects_add_hypothesis'),
 ]
 
 from django.urls import path
@@ -38,4 +40,6 @@ urlpatterns = [
     path('projects/new/', views.projects_create, name='projects_create'),
     path('projects/<int:pk>/', views.projects_detail, name='projects_detail'),
     path('projects/<int:pk>/paper/update/', views.projects_update_paper, name='projects_update_paper'),
+    path('projects/<int:pk>/notes/add/', views.projects_add_note, name='projects_add_note'),
+    path('projects/<int:pk>/hypotheses/add/', views.projects_add_hypothesis, name='projects_add_hypothesis'),
 ]

@@ -5,7 +5,8 @@ from django.contrib.auth.forms import UserCreationForm
 from django.shortcuts import redirect
 from asgiref.sync import async_to_sync
 from django import forms
-from .models import Simulation, Project, Paper
+from django.db.models import Q
+from .models import Simulation, Project, Paper, Hypothesis, Note, Literature
 
 
 
@@ -122,6 +123,18 @@ class PaperForm(forms.ModelForm):
         fields = ['title', 'abstract', 'content_raw', 'content_format']
 
 
+class NoteForm(forms.ModelForm):
+    class Meta:
+        model = Note
+        fields = ['title', 'body', 'pinned']
+
+
+class HypothesisForm(forms.ModelForm):
+    class Meta:
+        model = Hypothesis
+        fields = ['title', 'statement']
+
+
 @login_required
 def projects_list(request):
     projects = Project.objects.filter(owner=request.user).order_by('-updated_at')
@@ -189,14 +202,28 @@ def projects_detail(request, pk: int):
 
     experiments = Simulation.objects.filter(project=project).order_by('-updated_at')[:10]
     citations = paper.citations.select_related('literature').order_by('order')
+    hypotheses = Hypothesis.objects.filter(project=project).order_by('-updated_at')
+    notes = project.notes.all()
+    related_literature = Literature.objects.filter(
+        Q(citations__paper=paper) | Q(hypotheses__project=project)
+    ).distinct().order_by('-updated_at')
 
     paper_form = PaperForm(instance=paper)
+    note_form = NoteForm()
+    hypothesis_form = HypothesisForm()
+    initial_tab = request.GET.get('tab') or 'overview'
     return render(request, 'projects_detail.html', {
         'project': project,
         'paper': paper,
         'paper_form': paper_form,
         'experiments': experiments,
         'citations': citations,
+        'hypotheses': hypotheses,
+        'notes': notes,
+        'related_literature': related_literature,
+        'note_form': note_form,
+        'hypothesis_form': hypothesis_form,
+        'initial_tab': initial_tab,
     })
 
 
@@ -208,4 +235,34 @@ def projects_update_paper(request, pk: int):
         form = PaperForm(request.POST, instance=paper)
         if form.is_valid():
             form.save()
-    return redirect('projects_detail', pk=project.pk)
+    tab = request.GET.get('tab') or request.POST.get('tab') or 'paper'
+    return redirect(f"/projects/{project.pk}/?tab={tab}")
+
+
+@login_required
+def projects_add_note(request, pk: int):
+    project = Project.objects.get(pk=pk, owner=request.user)
+    if request.method == 'POST':
+        form = NoteForm(request.POST)
+        if form.is_valid():
+            note = form.save(commit=False)
+            note.project = project
+            note.save()
+    return redirect(f"/projects/{project.pk}/?tab=notes")
+
+
+@login_required
+def projects_add_hypothesis(request, pk: int):
+    project = Project.objects.get(pk=pk, owner=request.user)
+    if request.method == 'POST':
+        form = HypothesisForm(request.POST)
+        if form.is_valid():
+            hyp = form.save(commit=False)
+            hyp.project = project
+            # By default, tie to the project's paper if present
+            try:
+                hyp.paper = project.paper
+            except Paper.DoesNotExist:
+                pass
+            hyp.save()
+    return redirect(f"/projects/{project.pk}/?tab=hypotheses")

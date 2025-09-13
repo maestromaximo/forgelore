@@ -10,59 +10,370 @@
   </div>
   <div class="flex items-center gap-2">
     <a href="{% url 'experiments_create' %}" class="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50">New experiment</a>
+    <a href="{% url 'projects_detail' pk=project.pk %}?tab=notes" class="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50">Add note</a>
+    <a href="{% url 'projects_detail' pk=project.pk %}?tab=hypotheses" class="inline-flex items-center rounded-md border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-800 hover:bg-gray-50">Add hypothesis</a>
   </div>
-</div>
+ </div>
 {% endblock %}
 
 {% block content %}
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-  <!-- Paper Editor -->
-  <div class="lg:col-span-2 rounded-lg border border-gray-200 bg-white p-4">
-    <h2 class="text-sm font-semibold">Paper</h2>
-    <form method="post" action="{% url 'projects_update_paper' pk=project.pk %}" class="mt-3 space-y-3">
-      {% csrf_token %}
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Title</label>
-        {{ paper_form.title }}
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Abstract</label>
-        {{ paper_form.abstract }}
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Content</label>
-        {{ paper_form.content_raw }}
-      </div>
-      <div>
-        <label class="block text-sm font-medium text-gray-700">Format</label>
-        {{ paper_form.content_format }}
-      </div>
-      <div class="pt-2">
-        <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Save paper</button>
-      </div>
-    </form>
-  </div>
+<div id="project-tabs" data-initial-tab="{{ initial_tab }}" class="space-y-4">
+  <!-- Tabs -->
+  <nav class="rounded-lg border border-gray-200 bg-white px-2">
+    <div class="flex flex-wrap items-center gap-1">
+      <button type="button" data-tab="overview" class="tab-btn px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 aria-selected:bg-gray-100">Overview</button>
+      <button type="button" data-tab="paper" class="tab-btn px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Paper</button>
+      <button type="button" data-tab="literature" class="tab-btn px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Literature</button>
+      <button type="button" data-tab="experiments" class="tab-btn px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Experiments</button>
+      <button type="button" data-tab="hypotheses" class="tab-btn px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Hypotheses</button>
+      <button type="button" data-tab="notes" class="tab-btn px-3 py-2 text-sm font-medium text-gray-700 hover:text-gray-900">Notes</button>
+    </div>
+  </nav>
 
-  <!-- Project Sidebar: Experiments & Citations -->
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
-    <h3 class="text-sm font-semibold">Recent experiments</h3>
-    <div role="list" class="mt-2 space-y-2">
+  <!-- Overview -->
+  <section id="tab-overview" class="tab-panel rounded-lg border border-gray-200 bg-white p-4 hidden">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="rounded-md border border-gray-200 p-4">
+        <div class="text-xs uppercase text-gray-500">Paper</div>
+        <div class="mt-1 text-sm text-gray-800">{{ paper.title }}</div>
+        <div class="mt-2">
+          <a href="{% url 'projects_detail' pk=project.pk %}?tab=paper" class="text-brand-700 text-sm hover:underline">Open editor</a>
+        </div>
+      </div>
+      <div class="rounded-md border border-gray-200 p-4">
+        <div class="text-xs uppercase text-gray-500">Experiments</div>
+        <div class="mt-1 text-2xl font-semibold">{{ experiments|length }}</div>
+        <div class="mt-2"><a href="{% url 'projects_detail' pk=project.pk %}?tab=experiments" class="text-brand-700 text-sm hover:underline">View experiments</a></div>
+      </div>
+      <div class="rounded-md border border-gray-200 p-4">
+        <div class="text-xs uppercase text-gray-500">Hypotheses</div>
+        <div class="mt-1 text-2xl font-semibold">{{ hypotheses|length }}</div>
+        <div class="mt-2"><a href="{% url 'projects_detail' pk=project.pk %}?tab=hypotheses" class="text-brand-700 text-sm hover:underline">Manage hypotheses</a></div>
+      </div>
+    </div>
+    <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="rounded-md border border-gray-200 p-4">
+        <h3 class="text-sm font-semibold">Recent experiments</h3>
+        <div role="list" class="mt-2 space-y-2">
+          {% for s in experiments %}
+            <div role="listitem" class="text-sm flex items-start justify-between">
+              <a href="{% url 'experiments_detail' pk=s.pk %}" class="text-brand-700 hover:underline">{{ s.name }}</a>
+              <span class="ml-2 text-gray-500">{{ s.status }}</span>
+            </div>
+          {% empty %}
+            <div role="listitem" class="text-sm text-gray-500">No experiments yet</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="rounded-md border border-gray-200 p-4">
+        <h3 class="text-sm font-semibold">Citations in paper</h3>
+        <div role="list" class="mt-2 space-y-2">
+          {% for c in citations %}
+            <div role="listitem" class="text-sm">
+              {% if c.literature.url %}
+                <a href="{{ c.literature.url }}" target="_blank" rel="noopener" class="text-brand-700 hover:underline">{{ c.literature.title }}</a>
+              {% else %}
+                <span class="text-gray-800">{{ c.literature.title }}</span>
+              {% endif %}
+            </div>
+          {% empty %}
+            <div role="listitem" class="text-sm text-gray-500">No citations yet</div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Paper -->
+  <section id="tab-paper" class="tab-panel hidden">
+    <div class="grid grid-cols-1 xl:grid-cols-3 gap-4">
+      <!-- Editor + Preview -->
+      <div class="xl:col-span-2 space-y-4">
+        <div class="rounded-lg border border-gray-200 bg-white">
+          <form method="post" action="{% url 'projects_update_paper' pk=project.pk %}" class="p-4">
+            {% csrf_token %}
+            <input type="hidden" name="tab" value="paper">
+            <input type="hidden" name="content_format" value="{{ paper.content_format }}">
+            <div class="flex items-center justify-between">
+              <div class="text-sm font-semibold">Paper editor</div>
+              <div class="flex items-center gap-2">
+                <a href="https://www.markdownguide.org/basic-syntax/" target="_blank" rel="noopener" class="text-xs text-gray-600 hover:text-gray-800">Markdown</a>
+                <a href="https://www.mathjax.org/" target="_blank" rel="noopener" class="text-xs text-gray-600 hover:text-gray-800">LaTeX</a>
+                <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Save</button>
+              </div>
+            </div>
+            <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-xs font-medium text-gray-700">Title</label>
+                <input name="title" value="{{ paper.title }}" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:outline-none" placeholder="Paper title">
+              </div>
+              <div>
+                <label class="block text-xs font-medium text-gray-700">Abstract</label>
+                <textarea name="abstract" rows="3" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:outline-none" placeholder="A concise abstract">{{ paper.abstract }}</textarea>
+              </div>
+              <div class="lg:col-span-2">
+                <label class="block text-xs font-medium text-gray-700">Content (Markdown + LaTeX)</label>
+                <textarea id="paper-content" name="content_raw" rows="20" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono text-gray-900 placeholder-gray-400 focus:border-brand-600 focus:outline-none" placeholder="# Introduction\nWrite your paper here...">{{ paper.content_raw }}</textarea>
+              </div>
+            </div>
+          </form>
+        </div>
+
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <div class="text-sm font-semibold">Live preview</div>
+          <div id="paper-preview" class="mt-3 text-gray-900 leading-relaxed space-y-3"></div>
+        </div>
+      </div>
+
+      <!-- Sidebar: Experiments, Citations, Hypotheses -->
+      <aside class="space-y-4">
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <h3 class="text-sm font-semibold">Recent experiments</h3>
+          <div role="list" class="mt-2 space-y-2">
+            {% for s in experiments %}
+              <div role="listitem" class="text-sm">
+                <a href="{% url 'experiments_detail' pk=s.pk %}" class="text-brand-700 hover:underline">{{ s.name }}</a>
+                <span class="text-gray-500">· {{ s.status }}</span>
+              </div>
+            {% empty %}
+              <div role="listitem" class="text-sm text-gray-500">No experiments yet</div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <h3 class="text-sm font-semibold">Citations</h3>
+          <div role="list" class="mt-2 space-y-2">
+            {% for c in citations %}
+              <div role="listitem" class="text-sm">
+                {% if c.literature.url %}
+                  <a href="{{ c.literature.url }}" target="_blank" rel="noopener" class="text-brand-700 hover:underline">{{ c.literature.title }}</a>
+                {% else %}
+                  <span class="text-gray-800">{{ c.literature.title }}</span>
+                {% endif %}
+              </div>
+            {% empty %}
+              <div role="listitem" class="text-sm text-gray-500">No citations yet</div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="rounded-lg border border-gray-200 bg-white p-4">
+          <h3 class="text-sm font-semibold">Hypotheses</h3>
+          <div role="list" class="mt-2 space-y-2">
+            {% for h in hypotheses %}
+              <div role="listitem" class="text-sm flex items-start justify-between gap-2">
+                <div>
+                  <div class="font-medium text-gray-900">{{ h.title }}</div>
+                  <div class="text-gray-600 text-xs">{{ h.status }}</div>
+                </div>
+              </div>
+            {% empty %}
+              <div role="listitem" class="text-sm text-gray-500">No hypotheses yet</div>
+            {% endfor %}
+          </div>
+          <div class="mt-3 text-right">
+            <a href="{% url 'projects_detail' pk=project.pk %}?tab=hypotheses" class="text-brand-700 text-sm hover:underline">Manage</a>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Literature -->
+  <section id="tab-literature" class="tab-panel rounded-lg border border-gray-200 bg-white p-4 hidden">
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-semibold">Linked & related literature</h3>
+      <a href="{% url 'literature_search' %}" class="text-brand-700 text-sm hover:underline">Search & add</a>
+    </div>
+    <div role="list" class="mt-3 space-y-3">
+      {% for lit in related_literature %}
+        <div role="listitem" class="text-sm">
+          {% if lit.url %}
+            <a href="{{ lit.url }}" target="_blank" rel="noopener" class="text-brand-700 hover:underline">{{ lit.title }}</a>
+          {% else %}
+            <span class="text-gray-900">{{ lit.title }}</span>
+          {% endif %}
+          {% if lit.year %}<span class="text-gray-500"> · {{ lit.year }}</span>{% endif %}
+          {% if lit.tags %}<div class="text-xs text-gray-500">{{ lit.tags }}</div>{% endif %}
+        </div>
+      {% empty %}
+        <div role="listitem" class="text-sm text-gray-500">No literature linked yet</div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Experiments -->
+  <section id="tab-experiments" class="tab-panel rounded-lg border border-gray-200 bg-white p-4 hidden">
+    <div class="flex items-center justify-between">
+      <h3 class="text-sm font-semibold">Experiments</h3>
+      <a href="{% url 'experiments_create' %}" class="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-800 hover:bg-gray-50">New experiment</a>
+    </div>
+    <div role="list" class="mt-3 divide-y divide-gray-200">
       {% for s in experiments %}
-        <div role="listitem" class="text-sm"><a href="{% url 'experiments_detail' pk=s.pk %}" class="text-brand-700 hover:underline">{{ s.name }}</a> <span class="text-gray-500">· {{ s.status }}</span></div>
+        <div role="listitem" class="py-3">
+          <div class="flex items-start justify-between">
+            <div>
+              <a href="{% url 'experiments_detail' pk=s.pk %}" class="text-sm font-medium text-brand-700 hover:underline">{{ s.name }}</a>
+              <div class="text-xs text-gray-600">{{ s.description|default:"No description" }}</div>
+            </div>
+            <div class="text-xs text-gray-500">{{ s.status }}</div>
+          </div>
+        </div>
       {% empty %}
-        <div role="listitem" class="text-sm text-gray-500">No experiments yet</div>
+        <div role="listitem" class="text-sm text-gray-500 py-3">No experiments yet</div>
       {% endfor %}
     </div>
-    <h3 class="mt-4 text-sm font-semibold">Citations</h3>
-    <div role="list" class="mt-2 space-y-2">
-      {% for c in citations %}
-        <div role="listitem" class="text-sm">{{ c.literature.title }}</div>
-      {% empty %}
-        <div role="listitem" class="text-sm text-gray-500">No citations yet</div>
-      {% endfor %}
+  </section>
+
+  <!-- Hypotheses -->
+  <section id="tab-hypotheses" class="tab-panel rounded-lg border border-gray-200 bg-white p-4 hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2">
+        <h3 class="text-sm font-semibold">Hypotheses</h3>
+        <div role="list" class="mt-3 divide-y divide-gray-200">
+          {% for h in hypotheses %}
+            <div role="listitem" class="py-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="text-sm font-medium text-gray-900">{{ h.title }}</div>
+                  <div class="text-sm text-gray-700">{{ h.statement }}</div>
+                </div>
+                <div class="text-xs text-gray-500">{{ h.status }}</div>
+              </div>
+            </div>
+          {% empty %}
+            <div role="listitem" class="text-sm text-gray-500 py-3">No hypotheses yet</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <h4 class="text-sm font-semibold">Add hypothesis</h4>
+        <form method="post" action="{% url 'projects_add_hypothesis' pk=project.pk %}" class="mt-2 space-y-2">
+          {% csrf_token %}
+          <div>
+            <label class="block text-xs font-medium text-gray-700">Title</label>
+            <input name="title" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-600 focus:outline-none" placeholder="Hypothesis title">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700">Statement</label>
+            <textarea name="statement" rows="4" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-600 focus:outline-none" placeholder="What do you propose?"></textarea>
+          </div>
+          <div class="pt-1">
+            <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Add</button>
+          </div>
+        </form>
+      </div>
     </div>
-  </div>
+  </section>
+
+  <!-- Notes -->
+  <section id="tab-notes" class="tab-panel rounded-lg border border-gray-200 bg-white p-4 hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div class="lg:col-span-2">
+        <h3 class="text-sm font-semibold">Notes</h3>
+        <div role="list" class="mt-3 divide-y divide-gray-200">
+          {% for n in notes %}
+            <div role="listitem" class="py-3">
+              <div class="flex items-start justify-between">
+                <div>
+                  <div class="text-sm font-medium text-gray-900">{{ n.title }}</div>
+                  <div class="text-sm text-gray-700 whitespace-pre-wrap">{{ n.body }}</div>
+                </div>
+                {% if n.pinned %}<span class="text-xs text-brand-700">Pinned</span>{% endif %}
+              </div>
+            </div>
+          {% empty %}
+            <div role="listitem" class="text-sm text-gray-500 py-3">No notes yet</div>
+          {% endfor %}
+        </div>
+      </div>
+      <div>
+        <h4 class="text-sm font-semibold">Add note</h4>
+        <form method="post" action="{% url 'projects_add_note' pk=project.pk %}" class="mt-2 space-y-2">
+          {% csrf_token %}
+          <div>
+            <label class="block text-xs font-medium text-gray-700">Title</label>
+            <input name="title" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-600 focus:outline-none" placeholder="Note title">
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-gray-700">Body</label>
+            <textarea name="body" rows="5" class="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-brand-600 focus:outline-none" placeholder="Write your note..."></textarea>
+          </div>
+          <label class="inline-flex items-center gap-2 text-xs text-gray-700">
+            <input type="checkbox" name="pinned" class="h-4 w-4 rounded border-gray-300"> Pinned
+          </label>
+          <div class="pt-1">
+            <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
 </div>
+
+<!-- Tab + Preview Scripts -->
+<script>
+  (function() {
+    function selectTab(name) {
+      const panels = document.querySelectorAll('.tab-panel');
+      const buttons = document.querySelectorAll('.tab-btn');
+      panels.forEach(p => p.classList.add('hidden'));
+      buttons.forEach(b => {
+        if (b.dataset.tab === name) {
+          b.classList.add('text-brand-700');
+          b.setAttribute('aria-selected', 'true');
+        } else {
+          b.classList.remove('text-brand-700');
+          b.removeAttribute('aria-selected');
+        }
+      });
+      const el = document.getElementById('tab-' + name);
+      if (el) el.classList.remove('hidden');
+      const url = new URL(window.location);
+      url.searchParams.set('tab', name);
+      window.history.replaceState({}, '', url);
+    }
+
+    document.addEventListener('click', function(e) {
+      const btn = e.target.closest('.tab-btn');
+      if (btn) {
+        selectTab(btn.dataset.tab);
+      }
+    });
+
+    // Initialize selected tab
+    const init = (document.getElementById('project-tabs')?.dataset?.initialTab) || 'overview';
+    selectTab(init);
+
+    // Live preview for paper
+    function renderPreview() {
+      const src = document.getElementById('paper-content');
+      const out = document.getElementById('paper-preview');
+      if (!src || !out || !window.marked || !window.DOMPurify) return;
+      const raw = src.value || '';
+      const html = DOMPurify.sanitize(marked.parse(raw));
+      out.innerHTML = html;
+      if (window.MathJax && MathJax.typesetPromise) {
+        MathJax.typesetPromise([out]).catch(() => {});
+      }
+    }
+    document.addEventListener('input', function(e) {
+      if (e.target && e.target.id === 'paper-content') renderPreview();
+    });
+    document.addEventListener('DOMContentLoaded', renderPreview);
+    window.addEventListener('load', renderPreview);
+  })();
+</script>
+
+<!-- Markdown, Sanitizer, MathJax -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" integrity="sha256-5qQ+Q8t9v6HhI7vGpaNnK7pXfKZ/0b7V2c7e8cLaF9Y=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js" integrity="sha256-qTqf2k2n2bK2Wk5c4QgjlqfPZs8mG7t0cQG4+1eU7S8=" crossorigin="anonymous"></script>
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['\\(','\\)']], displayMath: [['\\[','\\]']] },
+    options: { renderActions: { addMenu: [] } }
+  };
+}</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" id="MathJax-script" async></script>
 {% endblock %}
 
 

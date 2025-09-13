@@ -24,7 +24,7 @@
   </div>
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-sm font-semibold">Parameters</h2>
-    <pre class="mt-2 whitespace-pre-wrap text-xs">{{ simulation.parameters|default:{}|json_script:"sim_params" }}</pre>
+    <pre class="mt-2 whitespace-pre-wrap text-xs">{{ simulation.parameters|default:"{}" }}</pre>
   </div>
   <div class="rounded-lg border border-gray-200 bg-white p-4">
     <h2 class="text-sm font-semibold">Stdout</h2>
