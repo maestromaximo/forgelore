@@ -6,7 +6,10 @@ from django.shortcuts import redirect
 from asgiref.sync import async_to_sync
 from django import forms
 from django.db.models import Q, Count
-from .models import Simulation, Project, Paper, Hypothesis, Note, Literature, Citation, LiteratureSourceType, ProjectStatus
+from django.utils import timezone
+from .models import Simulation, Project, Paper, Hypothesis, Note, Literature, Citation, LiteratureSourceType, ProjectStatus, AutomationJob, AutomationTask, AutomationJobStatus, AutomationTaskStatus
+from django.http import JsonResponse
+import threading
 
 
 
@@ -321,6 +324,8 @@ def projects_create(request):
                     project.description = snippet
                 project.save(update_fields=['abstract', 'description', 'updated_at'])
 
+            # Start automation in background (parallel systems)
+            _start_automation_background(project.pk)
             return redirect('projects_detail', pk=project.pk)
     else:
         form = ProjectUploadForm()
@@ -358,6 +363,116 @@ def projects_detail(request, pk: int):
         'hypothesis_form': hypothesis_form,
         'initial_tab': initial_tab,
     })
+
+
+# -----------------------
+# Automation background
+# -----------------------
+def _start_automation_background(project_id: int):
+    def run():
+        job = AutomationJob.objects.create(project_id=project_id, status=AutomationJobStatus.RUNNING, started_at=timezone.now())
+
+        def start_task(name: str) -> AutomationTask:
+            return AutomationTask.objects.create(job=job, name=name, status=AutomationTaskStatus.RUNNING, started_at=timezone.now())
+
+        def complete_task(task: AutomationTask, status: str, message: str = "", result: dict | None = None):
+            task.status = status
+            task.message = message
+            task.result_json = result
+            task.progress = 100
+            task.finished_at = timezone.now()
+            task.save(update_fields=['status', 'message', 'result_json', 'progress', 'finished_at', 'updated_at'])
+
+        try:
+            threads = []
+
+            # Always run initial research
+            def run_initial_research():
+                t = start_task('initial_research')
+                try:
+                    from agents_sdk.initial_research_agents.manager import InitialResearchServiceManager
+                    out = InitialResearchServiceManager().run_for_project_sync(project_id)
+                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
+                except Exception as e:
+                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
+
+            # Only run initial draft if paper has no content
+            def run_initial_draft_if_needed():
+                t = start_task('initial_draft')
+                try:
+                    paper = Paper.objects.filter(project_id=project_id).first()
+                    if paper and (paper.content_raw or '').strip():
+                        complete_task(t, AutomationTaskStatus.CANCELLED, message='Skipped: paper already has content')
+                        return
+                    from agents_sdk.paper_draft_agents.manager import PaperDraftServiceManager
+                    out = PaperDraftServiceManager().run_for_project_sync(project_id)
+                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
+                except Exception as e:
+                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
+
+            def run_hypothesis_testing():
+                t = start_task('hypothesis_testing')
+                try:
+                    from agents_sdk.hypothesis_testing_agents.manager import HypothesisTestingServiceManager
+                    out = HypothesisTestingServiceManager().run_for_project_sync(project_id)
+                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
+                except Exception as e:
+                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
+
+            def run_compilation():
+                t = start_task('compilation')
+                try:
+                    from agents_sdk.compilation_agents.manager import CompilationServiceManager
+                    out = CompilationServiceManager().run_for_project_sync(project_id)
+                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
+                except Exception as e:
+                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
+
+            for fn in [run_initial_research, run_initial_draft_if_needed, run_hypothesis_testing, run_compilation]:
+                th = threading.Thread(target=fn)
+                th.daemon = True
+                th.start()
+                threads.append(th)
+
+            for th in threads:
+                th.join()
+
+            job.status = AutomationJobStatus.SUCCESS
+            job.finished_at = timezone.now()
+            job.save(update_fields=['status', 'finished_at', 'updated_at'])
+        except Exception as e:
+            job.status = AutomationJobStatus.FAILED
+            job.message = str(e)
+            job.finished_at = timezone.now()
+            job.save(update_fields=['status', 'message', 'finished_at', 'updated_at'])
+
+    threading.Thread(target=run, daemon=True).start()
+
+
+@login_required
+def project_automation_status(request, pk: int):
+    project = Project.objects.get(pk=pk, owner=request.user)
+    job = project.automation_jobs.order_by('-created_at').first()
+    payload = {'job': None, 'tasks': []}
+    if job:
+        payload['job'] = {
+            'id': job.id,
+            'status': job.status,
+            'message': job.message,
+            'started_at': job.started_at.isoformat() if job.started_at else None,
+            'finished_at': job.finished_at.isoformat() if job.finished_at else None,
+        }
+        for t in job.tasks.order_by('created_at'):
+            payload['tasks'].append({
+                'id': t.id,
+                'name': t.name,
+                'status': t.status,
+                'progress': t.progress,
+                'message': t.message,
+                'started_at': t.started_at.isoformat() if t.started_at else None,
+                'finished_at': t.finished_at.isoformat() if t.finished_at else None,
+            })
+    return JsonResponse(payload)
 
 
 @login_required

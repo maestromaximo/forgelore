@@ -255,3 +255,50 @@ class Attachment(TimestampedModel):
         return f"Attachment({self.kind}) -> {target}"
 
 
+
+
+class AutomationJobStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    RUNNING = "running", "Running"
+    SUCCESS = "success", "Success"
+    FAILED = "failed", "Failed"
+
+
+class AutomationTaskStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    RUNNING = "running", "Running"
+    SUCCESS = "success", "Success"
+    FAILED = "failed", "Failed"
+    CANCELLED = "cancelled", "Cancelled"
+
+
+class AutomationJob(TimestampedModel):
+    """Background automation run for a Project spanning multiple agent systems."""
+
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="automation_jobs")
+    status = models.CharField(max_length=20, choices=AutomationJobStatus.choices, default=AutomationJobStatus.PENDING)
+    message = models.TextField(blank=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+
+    def __str__(self) -> str:
+        return f"AutomationJob[{self.id}] -> {self.project.name} ({self.status})"
+
+
+class AutomationTask(TimestampedModel):
+    """Individual system task within an AutomationJob (e.g., initial_research, initial_draft)."""
+
+    job = models.ForeignKey(AutomationJob, on_delete=models.CASCADE, related_name="tasks")
+    name = models.CharField(max_length=100)
+    status = models.CharField(max_length=20, choices=AutomationTaskStatus.choices, default=AutomationTaskStatus.PENDING)
+    progress = models.PositiveIntegerField(default=0)
+    message = models.TextField(blank=True)
+    result_json = models.JSONField(blank=True, null=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["job", "name"]) ]
+
+    def __str__(self) -> str:
+        return f"AutomationTask[{self.name}] ({self.status})"
