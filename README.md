@@ -1,68 +1,82 @@
-## ForgeLore — Autonomous Research Copilot for Academics and R&D
+## ForgeLore — The Copilot for Science
 
-ForgeLore is a professional, research-focused assistant that accelerates the full scientific workflow: literature review, hypothesis generation, code-based experimentation/simulation, results analysis, and structured paper drafting. It is designed for academics, professors, and R&D teams seeking a trustworthy, corporate-grade UI and a rigorous agentic backbone.
+ForgeLore is the Copilot for science—an autonomous researcher that searches literature, tests ideas, and drafts papers, turning months of R&D into days.
 
 ![ForgeLore](static/images/forge_lore_logo.png)
 
-### What ForgeLore Does
-- **Literature retrieval**: Pull up-to-date papers (starting with arXiv) and summarize key findings.
-- **Hypothesis generation**: Propose promising directions based on gaps in the literature.
-- **Simulation/experimentation**: Execute Python code for analyses, numeric experiments, or toy simulations.
-- **Drafting**: Assemble Introduction, Methods, Results, and Conclusion with references.
-- **Modes**: Run fully autonomous or guided/co-pilot with human-in-the-loop approvals.
+<!-- shield of the website! https://forgelore.ca -->
+
+![ForgeLore](https://forgelore.ca)
+---
+
+## What it does (today)
+- **Parallel literature search**: Query arXiv, DOAJ, Semantic Scholar, and OpenAlex together. Link results to a project as citations, with open‑access PDFs detected where possible.
+- **Project workspace**: Organize research as Projects with a one‑to‑one Paper plus Hypotheses, Experiments, Notes, and Citations.
+- **Paper drafting in LaTeX**: Edit raw LaTeX with live preview. One‑click Recompile uses a compilation agent to regenerate a coherent draft from project context.
+- **Code experiments**: Run small simulations in Python with parameters; capture stdout/stderr and persist structured `result_json`.
+- **Autonomous pipeline**: Background automation chains Initial Research → Initial Draft → Hypothesis Testing → Compilation. Task status is visible in the UI.
+- **Voice to text helper**: Optional audio transcription endpoint to quickly capture project descriptions.
+- **Clean, enterprise UI**: Server‑rendered Django + Tailwind with a left sidebar workspace and professional tone.
 
 ---
 
-## Architecture (MVP)
-- **Backend**: Django (Python).
-- **UI**: Server-rendered templates using **TailwindCSS via CDN** (no build step required).
-- **Agent/Tools (planned)**: OpenAI Agents SDK integration, arXiv retrieval, PDF ingestion, Python REPL sandbox.
-- **State/Storage**: Django defaults for now; vector emebeddings local too
+## How it works
 
-Key templates:
-- `templates/landing.html`: Marketing base frame for landing pages.
-- `templates/home.html`: Simple landing page (extends `landing.html`) with Sign in/Sign up and product highlights.
-- `templates/base.html`: Application shell (top header) + left sidebar container (includes `sidemenu.html`).
-- `templates/sidemenu.html`: Corporate sidebar navigation.
-- `templates/dashboard.html`: Overview page with KPI cards, quick actions, and recent activity.
+### Research services
+Async provider modules normalize responses to a common `PaperRecord` and run in parallel via an aggregator.
 
-Styling:
-- Tailwind loaded via CDN in `landing.html` and `base.html`.
-- Brand color is configured with a small Tailwind inline config (brand-600/700). Adjust in the `<script>` config if needed.
+- arXiv (`main/research_services/arxiv.py`)
+- DOAJ (`main/research_services/doaj.py`)
+- Semantic Scholar (`main/research_services/semanticscholar.py`)
+- OpenAlex (`main/research_services/openalex.py`)
 
----
+Example:
+```python
+from main.research_services import HttpClient, search_all
 
-## Project Layout (top-level)
-- `forgelore/`: Django project settings and ASGI/WSGI.
-- `main/`: Primary Django app (views/models to be expanded).
-- `templates/`: UI templates (landing, home, base, sidemenu, dashboard).
-- `static/`: Project static assets (logos, images).
-- `openai-agents-python/`: SDK and examples for agentic capabilities (upstream project kept vendored).
-- `requirements.txt`: Python dependencies.
-- `manage.py`: Django management entry point.
+async def run_query(q: str):
+    client = HttpClient()
+    try:
+        return await search_all(client, query=q, limit_per_source=10, mailto="you@example.com")
+    finally:
+        await client.aclose()
+```
+
+Environment: `OPENALEX_MAILTO` (recommended), `SEMANTIC_SCHOLAR_API_KEY` (optional). HTTP retries/backoff are built in.
+
+### Agents and automation
+Agent managers live under `agents_sdk/` and are orchestrated from the Project page.
+
+- `InitialResearchServiceManager`: formalizes abstract, searches and summarizes literature, proposes hypotheses.
+- `PaperDraftServiceManager`: generates initial draft when the Paper is empty.
+- `HypothesisTestingServiceManager`: researches background, decides if simulation is needed, optionally runs a toy experiment, then answers.
+- `CompilationServiceManager`: compiles a full LaTeX manuscript and persists changes if different.
+
+Automation runs as a background job with per‑task status (`initial_research`, `initial_draft`, `hypothesis_testing`, `compilation`).
+
+### Application pages
+- **Dashboard**: KPIs, recent activity, quick actions.
+- **Projects**: list/create projects; optional PDF/TXT import and mic‑to‑text for descriptions.
+- **Project detail**: tabs for Overview, Paper (editor + preview), Literature, Experiments, Hypotheses, Notes, Automation.
+- **Literature search**: query providers in parallel and link results to a project.
+- **Experiments**: create, run, and inspect code‑based simulations.
 
 ---
 
 ## Quickstart
 
-### Prerequisites (testing only done in 3.10 rn for the hackathon)
-- Python 3.10+
+Prerequisites: Python 3.10+
 
-### Setup (Windows PowerShell) (first set the .env!!!)
+### Windows PowerShell
 ```powershell
-# From the repository root
 py -m venv venv
 ./venv/Scripts/Activate.ps1
 pip install -r requirements.txt
-
-# Apply migrations (none or minimal in MVP)
 python manage.py migrate
-
-# Run development server
 python manage.py runserver
 ```
 
-### Setup (macOS/Linux) (first set the .env!!!)
+### macOS/Linux
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -71,53 +85,60 @@ python manage.py migrate
 python manage.py runserver
 ```
 
-Open the app at `http://127.0.0.1:8000/`.
+optionally create a superuser for admin access
+```bash
+python manage.py createsuperuser
+```
+
+Open `http://127.0.0.1:8000/`.
 
 ---
 
-
----
-
-## UI Overview
-- **Landing/Home**: Clean, corporate hero + features, clear auth actions, suitable for academics and enterprise.
-- **App Shell**: `base.html` integrates the **left sidebar** (`sidemenu.html`) and **top header** with search and account.
-- **Dashboard**: KPI cards, quick actions (autonomous run, guided workflow, upload paper, new project), and activity feed.
-
+## Usage
+1. Create a Project (optionally upload a PDF/TXT draft to seed the Paper).
+2. Use Literature Search to find papers; use “Link to project” to add citations.
+3. Add Hypotheses and create Experiments; run to capture results.
+4. Edit the Paper and click Recompile to regenerate a LaTeX draft.
+5. Check over automation status on the Automation tab as it works it way through the pipeline!
+6. Optionally chat with the project assistant that is a supercharged ai agent system that has access to the project's data and can help you with your research further.
 
 ---
 
 ## Configuration
-Environment variables (optional initial set):
-- `DJANGO_SECRET_KEY` — set a secure key in production.
-- `DEBUG` — `True` (dev) / `False` (prod).
-- `ALLOWED_HOSTS` — hostnames for deployment.
-- `OPENAI_API_KEY` — for agentic features when integrating models.
+- `DJANGO_SECRET_KEY`: set in production.
+- `DEBUG`: `True` (dev) / `False` (prod).
+- `ALLOWED_HOSTS`: production hostnames.
+- `OPENAI_API_KEY`: required for advanced agent features when enabled.
+- `OPENALEX_MAILTO`: polite use of OpenAlex.
+- `SEMANTIC_SCHOLAR_API_KEY`: optional.
+
+---
+
+## Repository layout
+- `forgelore/`: Django project (settings, ASGI/WSGI).
+- `main/`: app models, views, `research_services/`, utils, and tests.
+- `templates/`: server‑rendered UI (e.g., `base.html`, `dashboard.html`, `projects_detail.html`).
+- `static/`: images and assets.
+- `agents_sdk/`: domain‑specific agent managers and tools.
+- `openai-agents-python/`: vendored OpenAI Agents SDK and examples.
 
 ---
 
 ## Roadmap
-- **Literature**: arXiv API integration; expandable to OpenAlex and Crossref.
-- **PDF ingestion**: extract sections from uploaded manuscripts.
-- **RAG**: store summarized facts/sections in a vector store for grounded drafting.
-- **Python REPL**: sandboxed execution for simulations (NumPy/SciPy/SymPy/pandas).
-- **Autonomous loop**: plan → act (tools/code) → observe → refine → draft.
-- **Drafting**: section-by-section academic writing with inline numbered citations and references list.
-- **Guided mode**: approvals after literature, hypothesis, experiment planning, and drafting.
-- **Progress UI**: streaming step timeline and logs.
+- Expand provider features and OA filters/imports.
+- Richer experiment runners and result visualization.
+- Section‑aware drafting with numbered citations and references.
+- Full autonomous multi‑turn loop with approvals.
 
 ---
 
 ## Contributing
-- Keep the UI strictly professional (no emojis). Prefer monochrome with a restrained brand accent.
-- Match existing template patterns (`landing.html`/`base.html`).
-- Use clear, well-named views and URLs.
+Please read `CONTRIBUTING.md` for setup, style, and PR guidelines.
 
 ---
 
 ## Acknowledgements
-- arXiv (open-access literature source)
-- OpenAI Agents SDK (agentic orchestration, planned)
-
----
+- arXiv, DOAJ, Semantic Scholar, OpenAlex
+- OpenAI Agents SDK
 
 
