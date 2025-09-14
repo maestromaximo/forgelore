@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List
+import asyncio
 import inspect
 from asgiref.sync import async_to_sync, sync_to_async
 from pydantic import BaseModel
@@ -43,43 +44,13 @@ class HypothesisTestingServiceManager:
         existing = await list_hypotheses(project.id)
 
         results: List[HypothesisTestResult] = []
-        for h in existing:
-            # 1) Research background
-            research_result = await self._run(research_agent, f"Project ID: {project.id}\nHypothesis: {h.title}\n{h.statement}", max_turns=50)
-            research: HypothesisResearch = research_result.final_output  # type: ignore
-
-            # 2) Simulation decision
-            decider_result = await self._run(sim_decider_agent, f"Project ID: {project.id}\nHypothesis: {h.title}\n{h.statement}\nBackground:\n{research.background_summary}", max_turns=50)
-            decision: SimulationDecision = decider_result.final_output  # type: ignore
-
-            sim_out: SimulationResult | None = None
-            if decision.needed:
-                # Create and run a simple placeholder experiment
-                sim_prompt = f"# Test for: {h.title}\nprint('Test placeholder')"
-                exp = await create_experiment(project_id=project.id, name=f"AutoSim: {h.title}", code=sim_prompt)
-                sim_out = await self._run_sim(exp.id)
-
-            # 3) Answer hypothesis
-            combined_input = "\n".join([
-                f"Project ID: {project.id}",
-                f"Hypothesis: {h.title}",
-                h.statement,
-                "",
-                "Background:",
-                research.background_summary,
-                "",
-                f"Simulation: {sim_out.status if sim_out else 'not required'}",
+        batch_size = 8
+        for i in range(0, len(existing), batch_size):
+            batch = existing[i:i + batch_size]
+            batch_results = await asyncio.gather(*[
+                self._process_hypothesis(project, h) for h in batch
             ])
-            answer_result = await self._run(answer_agent, combined_input, max_turns=50)
-            answer: HypothesisAnswer = answer_result.final_output  # type: ignore
-
-            # Update status in DB
-            target_status = answer.status.lower()
-            if target_status not in {"supported", "rejected", "inconclusive"}:
-                target_status = "inconclusive"
-            await update_hypothesis_status(hypothesis_id=h.id, status=target_status)
-
-            results.append(HypothesisTestResult(hypothesis_id=h.id, status=target_status, justification=answer.justification))
+            results.extend(batch_results)
 
         return HypothesisTestingOutput(project_id=project.id, results=results)
 
@@ -100,5 +71,55 @@ class HypothesisTestingServiceManager:
         if inspect.isawaitable(result):
             return await result
         return result
+
+    async def _process_hypothesis(self, project: Project, h) -> HypothesisTestResult:
+        # 1) Research background
+        research_result = await self._run(
+            research_agent,
+            f"Project ID: {project.id}\nHypothesis: {h.title}\n{h.statement}",
+            max_turns=50,
+        )
+        research: HypothesisResearch = research_result.final_output  # type: ignore
+
+        # 2) Simulation decision
+        decider_result = await self._run(
+            sim_decider_agent,
+            f"Project ID: {project.id}\nHypothesis: {h.title}\n{h.statement}\nBackground:\n{research.background_summary}",
+            max_turns=50,
+        )
+        decision: SimulationDecision = decider_result.final_output  # type: ignore
+
+        sim_out: SimulationResult | None = None
+        if decision.needed:
+            # Create and run a simple placeholder experiment
+            sim_prompt = f"# Test for: {h.title}\nprint('Test placeholder')"
+            exp = await create_experiment(project_id=project.id, name=f"AutoSim: {h.title}", code=sim_prompt)
+            sim_out = await self._run_sim(exp.id)
+
+        # 3) Answer hypothesis
+        combined_input = "\n".join([
+            f"Project ID: {project.id}",
+            f"Hypothesis: {h.title}",
+            h.statement,
+            "",
+            "Background:",
+            research.background_summary,
+            "",
+            f"Simulation: {sim_out.status if sim_out else 'not required'}",
+        ])
+        answer_result = await self._run(answer_agent, combined_input, max_turns=50)
+        answer: HypothesisAnswer = answer_result.final_output  # type: ignore
+
+        # Update status in DB
+        target_status = answer.status.lower()
+        if target_status not in {"supported", "rejected", "inconclusive"}:
+            target_status = "inconclusive"
+        await update_hypothesis_status(hypothesis_id=h.id, status=target_status)
+
+        return HypothesisTestResult(
+            hypothesis_id=h.id,
+            status=target_status,
+            justification=answer.justification,
+        )
 
 
