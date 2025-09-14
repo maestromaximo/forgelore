@@ -1,9 +1,8 @@
-## ForgeLore — The Copilot for Science
+## ForgeLore — The Copilot for Science [![ForgeLore](https://img.shields.io/badge/Visit-FORGELORE.CA-blue?logo=forge&logoColor=white&style=for-the-badge)](https://forgelore.ca)
 
 ForgeLore is the Copilot for science—an autonomous researcher that searches literature, tests ideas, and drafts papers, turning months of R&D into days.
 
 ![ForgeLore](static/images/forge_lore_logo.png)
-[![ForgeLore](https://img.shields.io/badge/Visit-FORGELORE.CA-blue?logo=forge&logoColor=white&style=for-the-badge)](https://forgelore.ca)
 ---
 
 ## What it does (today)
