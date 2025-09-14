@@ -12,6 +12,9 @@ from .models import Simulation, Project, Paper, Hypothesis, Note, Literature, Ci
 from django.http import JsonResponse
 import threading
 from .utils.transcriptions import transcribe_file_like
+from django.views.decorators.http import require_POST
+from django.views.decorators.csrf import csrf_exempt
+from django.middleware.csrf import get_token
 
 
 
@@ -391,6 +394,7 @@ def projects_detail(request, pk: int):
         'note_form': note_form,
         'hypothesis_form': hypothesis_form,
         'initial_tab': initial_tab,
+        'csrf_token_value': get_token(request),
     })
 
 
@@ -560,6 +564,45 @@ def projects_recompile_paper(request, pk: int):
     except Exception as exc:
         messages.error(request, f"Recompile failed: {exc}")
         return redirect(f"/projects/{project.pk}/?tab=paper")
+
+
+@login_required
+@require_POST
+def project_chat(request, pk: int):
+    """Chat endpoint: accepts JSON body {message, history?} and replies JSON {reply}.
+
+    history is optional list of {role, content}, newest last. We always pin project_id to pk.
+    """
+    import json
+    try:
+        project = Project.objects.get(pk=pk, owner=request.user)
+    except Project.DoesNotExist:
+        return JsonResponse({"error": "Not found"}, status=404)
+
+    try:
+        data = json.loads(request.body.decode('utf-8')) if request.body else {}
+    except Exception:
+        return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+    message = (data.get('message') or '').strip()
+    history = data.get('history') or []
+    if not message:
+        return JsonResponse({"error": "Missing message"}, status=400)
+
+    # Build turns
+    from agents_sdk.project_chat_agents import ProjectChatServiceManager, ChatTurn
+    turns = [ChatTurn(role=str(item.get('role') or 'user'), content=str(item.get('content') or '')) for item in history if (item and isinstance(item, dict))]
+    turns.append(ChatTurn(role='user', content=message))
+
+    try:
+        manager = ProjectChatServiceManager()
+        result = manager.run_for_project_sync(project.id, turns)
+        return JsonResponse({
+            "reply": result.reply.text,
+            "project_id": result.project_id,
+        })
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
 
 
 @login_required
