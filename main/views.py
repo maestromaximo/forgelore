@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth import login
 from django.contrib.auth.forms import UserCreationForm
 from django.shortcuts import redirect
+from django.contrib import messages
 from asgiref.sync import async_to_sync
 from django import forms
 from django.db.models import Q, Count
@@ -551,9 +552,13 @@ def projects_recompile_paper(request, pk: int):
     try:
         from agents_sdk.compilation_agents.manager import CompilationServiceManager
         out = CompilationServiceManager().run_for_project_sync(project.id)
-        # Optionally: add a toast/message; for now just redirect back
+        if getattr(out, 'changed', False):
+            messages.success(request, "Paper recompiled and updated.")
+        else:
+            messages.info(request, "Recompile completed. No changes detected.")
         return redirect(f"/projects/{project.pk}/?tab=paper")
-    except Exception:
+    except Exception as exc:
+        messages.error(request, f"Recompile failed: {exc}")
         return redirect(f"/projects/{project.pk}/?tab=paper")
 
 

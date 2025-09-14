@@ -12,6 +12,8 @@ from main.research_services.types import PaperRecord, asdict_record
 from asgiref.sync import sync_to_async
 
 import logging
+import subprocess
+import sys
 
 logger = logging.getLogger(__name__)
 
@@ -477,6 +479,68 @@ def _update_note_sync(note_id: int, title: str, body: str) -> NoteModel:
 async def update_note(note_id: int, title: str, body: str) -> NoteModel:
     """Update a note's title and body."""
     return await sync_to_async(_update_note_sync)(note_id, title, body)
+
+
+# ----------------------
+# Environment management
+# ----------------------
+
+class PipInstallRequest(BaseModel):
+    package: str = Field(description="Package spec, e.g., 'numpy' or 'pandas==2.2.1'")
+    index_url: Optional[str] = Field(default=None, description="Optional custom index URL")
+    upgrade: bool = Field(default=False, description="If true, pass --upgrade")
+    extra_args: Optional[List[str]] = Field(default=None, description="Additional pip args if needed")
+
+
+class PipInstallResult(BaseModel):
+    success: bool
+    returncode: int
+    stdout: str = ""
+    stderr: str = ""
+
+
+def _pip_install_sync(req: PipInstallRequest) -> PipInstallResult:
+    """Install a Python package into the current environment using pip.
+
+    Executes: python -m pip install <package> [--upgrade] [--index-url URL] [extra_args...]
+    """
+    cmd: List[str] = [sys.executable, "-m", "pip", "install", req.package]
+    if req.upgrade:
+        cmd.append("--upgrade")
+    if req.index_url:
+        cmd.extend(["--index-url", req.index_url])
+    if req.extra_args:
+        # Basic sanitization: ensure list of strings
+        cmd.extend([str(x) for x in req.extra_args if x is not None])
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=180,
+            env={**dict(), **{"PIP_DISABLE_PIP_VERSION_CHECK": "1"}},
+        )
+        return PipInstallResult(
+            success=(proc.returncode == 0),
+            returncode=proc.returncode,
+            stdout=proc.stdout or "",
+            stderr=proc.stderr or "",
+        )
+    except subprocess.TimeoutExpired as exc:
+        return PipInstallResult(success=False, returncode=124, stdout=exc.stdout or "", stderr=(exc.stderr or "") + "\nTimed out")
+    except Exception as exc:
+        return PipInstallResult(success=False, returncode=1, stdout="", stderr=str(exc))
+
+
+@function_tool
+async def pip_install_library(request: PipInstallRequest) -> PipInstallResult:
+    """Install a Python library via pip in the current environment.
+
+    Use when an experiment requires a dependency that's missing. Keep packages minimal.
+    """
+    logger.info(f"pip_install_library(request={request})")
+    return await sync_to_async(_pip_install_sync)(request)
 
 
 

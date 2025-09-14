@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 from pydantic import BaseModel, Field
-from agents import Agent
+from agents import Agent, ModelSettings
 
 from ...initial_research_agents.tools import get_paper, list_literature, list_hypotheses
 
@@ -61,7 +61,13 @@ class FullLatexPaper(BaseModel):
 
 compilation_agent = Agent(
     name="paper_compilation",
-    model="gpt-4.1",
+    model="gpt-5",
+    model_settings=ModelSettings(
+        reasoning={
+            "effort": "high"
+        },
+        verbosity="high"
+    ),
     instructions=COMPILATION_INSTRUCTIONS,
     tools=[get_paper, list_literature, list_hypotheses],
     output_type=FullLatexPaper,
