@@ -520,6 +520,44 @@ def projects_update_paper(request, pk: int):
 
 
 @login_required
+def projects_recompile_paper(request, pk: int):
+    if request.method != 'POST':
+        return redirect('projects_detail', pk=pk)
+    project = Project.objects.get(pk=pk, owner=request.user)
+    # If user submitted edits, save them first so the compilation agent sees latest content
+    try:
+        paper = Paper.objects.get(project=project)
+        updated_fields = []
+        title = request.POST.get('title')
+        if title is not None and title != paper.title:
+            paper.title = title
+            updated_fields.append('title')
+        abstract = request.POST.get('abstract')
+        if abstract is not None and abstract != paper.abstract:
+            paper.abstract = abstract
+            updated_fields.append('abstract')
+        content_raw = request.POST.get('content_raw')
+        if content_raw is not None and content_raw != paper.content_raw:
+            paper.content_raw = content_raw
+            updated_fields.append('content_raw')
+        content_format = request.POST.get('content_format')
+        if content_format and content_format != paper.content_format:
+            paper.content_format = content_format
+            updated_fields.append('content_format')
+        if updated_fields:
+            paper.save(update_fields=updated_fields + ['updated_at'])
+    except Paper.DoesNotExist:
+        pass
+    try:
+        from agents_sdk.compilation_agents.manager import CompilationServiceManager
+        out = CompilationServiceManager().run_for_project_sync(project.id)
+        # Optionally: add a toast/message; for now just redirect back
+        return redirect(f"/projects/{project.pk}/?tab=paper")
+    except Exception:
+        return redirect(f"/projects/{project.pk}/?tab=paper")
+
+
+@login_required
 def projects_add_note(request, pk: int):
     project = Project.objects.get(pk=pk, owner=request.user)
     if request.method == 'POST':

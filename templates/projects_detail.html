@@ -102,6 +102,7 @@
               <div class="flex items-center gap-2">
                 <a href="https://www.mathjax.org/" target="_blank" rel="noopener" class="text-xs text-gray-600 hover:text-gray-800">LaTeX</a>
                 <button type="submit" class="inline-flex items-center rounded-md bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Save</button>
+                <button type="submit" formaction="{% url 'projects_recompile_paper' pk=project.pk %}" class="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-800 hover:bg-gray-50">Recompile</button>
               </div>
             </div>
             <div class="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-4">

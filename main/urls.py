@@ -18,6 +18,7 @@ urlpatterns = [
     path('projects/new/', views.projects_create, name='projects_create'),
     path('projects/<int:pk>/', views.projects_detail, name='projects_detail'),
     path('projects/<int:pk>/paper/update/', views.projects_update_paper, name='projects_update_paper'),
+    path('projects/<int:pk>/paper/recompile/', views.projects_recompile_paper, name='projects_recompile_paper'),
     path('projects/<int:pk>/notes/add/', views.projects_add_note, name='projects_add_note'),
     path('projects/<int:pk>/hypotheses/add/', views.projects_add_hypothesis, name='projects_add_hypothesis'),
     path('projects/<int:pk>/automation/status/', views.project_automation_status, name='project_automation_status'),

@@ -6,9 +6,9 @@ from asgiref.sync import async_to_sync, sync_to_async
 from pydantic import BaseModel
 from agents import Runner
 
-from main.models import Project, Paper
+from main.models import Project, Paper, PaperContentFormat
 
-from .agents.compilation_agent import compilation_agent, CompilationPlan, PaperDiff
+from .agents.compilation_agent import compilation_agent, FullLatexPaper
 
 
 class CompilationOutput(BaseModel):
@@ -18,7 +18,7 @@ class CompilationOutput(BaseModel):
 
 
 class CompilationServiceManager:
-    """Applies small, targeted diffs to paper content based on agent plan."""
+    """Generates the full LaTeX manuscript for the project's paper using the compilation agent."""
 
     def __init__(self) -> None:
         self.runner = Runner()
@@ -28,18 +28,13 @@ class CompilationServiceManager:
         paper, _ = await sync_to_async(Paper.objects.get_or_create)(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
         result = await self._run(compilation_agent, f"Project: {project.name}\nProject ID: {project.id}", max_turns=50)
-        plan: CompilationPlan = result.final_output  # type: ignore
+        latex_doc: FullLatexPaper = result.final_output  # type: ignore
 
-        applied = 0
-        content = paper.content_raw or ""
-        for diff in plan.diffs:
-            if diff.target and diff.target in content:
-                content = content.replace(diff.target, diff.replacement)
-                applied += 1
-
+        applied = 1 if (latex_doc.latex or '').strip() else 0
         if applied:
-            paper.content_raw = content
-            await sync_to_async(paper.save)(update_fields=['content_raw', 'updated_at'])
+            paper.content_raw = latex_doc.latex
+            paper.content_format = PaperContentFormat.LATEX
+            await sync_to_async(paper.save)(update_fields=['content_raw', 'content_format', 'updated_at'])
 
         return CompilationOutput(project_id=project.id, paper_id=paper.id, applied_diffs=applied)
 
