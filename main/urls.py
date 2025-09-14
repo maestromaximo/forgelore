@@ -23,5 +23,6 @@ urlpatterns = [
     path('projects/<int:pk>/notes/add/', views.projects_add_note, name='projects_add_note'),
     path('projects/<int:pk>/hypotheses/add/', views.projects_add_hypothesis, name='projects_add_hypothesis'),
     path('projects/<int:pk>/automation/status/', views.project_automation_status, name='project_automation_status'),
+    path('settings/', views.settings, name='settings'),
     path('api/transcribe/', views.transcribe_audio, name='transcribe_audio'),
 ]

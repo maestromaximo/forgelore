@@ -24,6 +24,12 @@ def home(request):
 
 
 @login_required
+def settings(request):
+    """Settings page showing basic user profile information."""
+    return render(request, 'settings.html')
+
+
+@login_required
 def dashboard(request):
     """Dashboard overview using templates/dashboard.html."""
     # Get KPI counts for the user
