@@ -6,3 +6,4 @@ Django
 tqdm
 httpx
 pypdf
+gunicorn
