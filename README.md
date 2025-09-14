@@ -18,6 +18,8 @@ ForgeLore is the Copilot for science—an autonomous researcher that searches li
 
 ## How it works
 
+![Architecture](static/images/fulldiagram.png)
+
 ### Research services
 Async provider modules normalize responses to a common `PaperRecord` and run in parallel via an aggregator.
 
