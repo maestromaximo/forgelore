@@ -27,7 +27,7 @@ class CompilationServiceManager:
         project = await sync_to_async(Project.objects.get)(pk=project_id)
         paper, _ = await sync_to_async(Paper.objects.get_or_create)(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
-        result = await self._run(compilation_agent, f"Project: {project.name}", max_turns=50)
+        result = await self._run(compilation_agent, f"Project: {project.name}\nProject ID: {project.id}", max_turns=50)
         plan: CompilationPlan = result.final_output  # type: ignore
 
         applied = 0

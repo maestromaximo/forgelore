@@ -45,11 +45,11 @@ class HypothesisTestingServiceManager:
         results: List[HypothesisTestResult] = []
         for h in existing:
             # 1) Research background
-            research_result = await self._run(research_agent, f"Hypothesis: {h.title}\n{h.statement}", max_turns=50)
+            research_result = await self._run(research_agent, f"Project ID: {project.id}\nHypothesis: {h.title}\n{h.statement}", max_turns=50)
             research: HypothesisResearch = research_result.final_output  # type: ignore
 
             # 2) Simulation decision
-            decider_result = await self._run(sim_decider_agent, f"Hypothesis: {h.title}\n{h.statement}\nBackground:\n{research.background_summary}", max_turns=50)
+            decider_result = await self._run(sim_decider_agent, f"Project ID: {project.id}\nHypothesis: {h.title}\n{h.statement}\nBackground:\n{research.background_summary}", max_turns=50)
             decision: SimulationDecision = decider_result.final_output  # type: ignore
 
             sim_out: SimulationResult | None = None
@@ -61,6 +61,7 @@ class HypothesisTestingServiceManager:
 
             # 3) Answer hypothesis
             combined_input = "\n".join([
+                f"Project ID: {project.id}",
                 f"Hypothesis: {h.title}",
                 h.statement,
                 "",

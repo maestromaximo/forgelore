@@ -28,7 +28,7 @@ class PaperDraftServiceManager:
         project = await sync_to_async(Project.objects.get)(pk=project_id)
         paper, _ = await sync_to_async(Paper.objects.get_or_create)(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
-        result = await self._run(drafting_agent, f"Project: {project.name}\nObjective: {paper.abstract or project.abstract or ''}", max_turns=50)
+        result = await self._run(drafting_agent, f"Project: {project.name}\nProject ID: {project.id}\nObjective: {paper.abstract or project.abstract or ''}", max_turns=50)
         sections: DraftSections = result.final_output  # type: ignore
 
         updated = False
