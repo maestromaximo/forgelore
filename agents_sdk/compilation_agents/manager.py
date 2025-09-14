@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List
+import inspect
 from asgiref.sync import async_to_sync, sync_to_async
 from pydantic import BaseModel
 from agents import Runner
@@ -26,7 +27,7 @@ class CompilationServiceManager:
         project = await sync_to_async(Project.objects.get)(pk=project_id)
         paper, _ = await sync_to_async(Paper.objects.get_or_create)(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
-        result = await self.runner.run(compilation_agent, f"Project: {project.name}")
+        result = await self._run(compilation_agent, f"Project: {project.name}", max_turns=50)
         plan: CompilationPlan = result.final_output  # type: ignore
 
         applied = 0
@@ -46,5 +47,12 @@ class CompilationServiceManager:
         async def go():
             return await self.process(project_id)
         return async_to_sync(go)()
+
+    async def _run(self, *args, **kwargs):
+        """Call Runner.run and support both async and sync mocks."""
+        result = self.runner.run(*args, **kwargs)
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
 

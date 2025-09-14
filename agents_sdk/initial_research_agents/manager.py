@@ -25,6 +25,10 @@ from .agents.literature_reviewer_agent import LiteratureReviewOutcome, literatur
 from .agents.literature_summarizer_agent import ProjectFocusedSummary, literature_summarizer_agent
 from .agents.hypothesizer_agent import HypothesesOutput, hypothesizer_agent
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class InitialResearchOutput(BaseModel):
     project_id: int
@@ -48,48 +52,146 @@ class InitialResearchServiceManager:
         self.runner = Runner()
 
     async def process(self, project_id: int) -> InitialResearchOutput:
+        logger.info(f"InitialResearchServiceManager.process(project_id={project_id})")
         project = await sync_to_async(Project.objects.get)(pk=project_id)
         paper, _ = await sync_to_async(Paper.objects.get_or_create)(
             project=project,
             defaults={'title': project.name, 'abstract': project.abstract},
         )
-
+        logger.info(f"paper and project retrieved")
         # Gather context summaries
         experiments: List[ExperimentSummary] = await list_experiments(project_id)
         literature_meta = await list_literature(project_id)
+        logger.info(f"experiments and literature_meta retrieved {experiments} {literature_meta}")
+        # Prepare common context snippets
+        experiments_text = (
+            "\n".join([f"- {e.name} (status={e.status})" for e in experiments])
+            if experiments else "None available."
+        )
+        literature_text = (
+            "\n".join([
+                f"- {getattr(lm, 'title', 'Untitled')}{(' (' + str(getattr(lm, 'year', None)) + ')') if getattr(lm, 'year', None) else ''}"
+                for lm in (literature_meta or [])
+            ]) if literature_meta else "None linked yet."
+        )
 
         # Step 1: Formalize
-        formalizer_input = self._build_formalizer_prompt(project, paper, experiments, literature_meta)
+        formalizer_input = f"""
+Project: {project.name}
+Project ID: {project.id}
+
+Paper title: {paper.title}
+
+Current abstract:
+{paper.abstract or ''}
+
+Experiments overview:
+{experiments_text}
+
+Linked literature (title / optional year):
+{literature_text}
+
+Task: Improve and formalize the research ask and abstract.
+- Preserve factual content; do not invent new results or sources.
+- Clarify the objective, scope, and expected outcomes.
+- Make objectives measurable when possible.
+- Keep the tone concise and scientifically neutral.
+"""
+        logger.info(f"running formalizer agent")
         formalizer_result = await self._run(
             formalizer_agent,
             formalizer_input,
+            max_turns=50,
         )
         formalized: FormalizedAsk = formalizer_result.final_output  # type: ignore
+        logger.info(f"formalizer agent result {formalizer_result}")
 
         improved_abstract = (formalized.improved_abstract or '').strip()
         if improved_abstract and improved_abstract != (paper.abstract or '').strip():
             paper.abstract = improved_abstract
+            logger.info(f"Updating paper abstract")
             await sync_to_async(paper.save)(update_fields=['abstract', 'updated_at'])
+            logger.info(f"paper abstract updated")
 
         # Step 2: Literature review (agent uses tools to search/link)
-        reviewer_input = self._build_reviewer_prompt(project, paper, formalized, literature_meta)
-        await self._run(literature_reviewer_agent, reviewer_input)
+        reviewer_input = f"""
+Project: {project.name}
+Project ID: {project.id}
+
+Formalized ask / objective:
+{(formalized.improved_abstract or paper.abstract or '').strip()}
+
+Previously linked literature (title / optional year):
+{literature_text}
+
+Task: Use your available tools to discover and, when appropriate, link relevant literature to this project.
+- Prioritize recent, high-quality, and directly relevant sources.
+- Avoid duplicate links; only add what strengthens the project objective.
+- If a found source is not accessible by reading tools, skip linking it.
+- When linking, ensure the link is associated with Project ID {project.id}.
+"""
+        logger.info(f"running literature reviewer agent")
+        reviewer_result = await self._run(literature_reviewer_agent, reviewer_input, max_turns=50)
+        logger.info(f"literature reviewer agent result {reviewer_result}")
 
         # Refresh literature after potential linking
         literature_meta = await list_literature(project_id)
-
+        logger.info(f"literature meta updated {literature_meta}")
         # Step 3: Literature summarization (agent reads via tools)
-        summarizer_input = self._build_summarizer_prompt(project, paper, formalized, literature_meta)
-        summarizer_result = await self._run(literature_summarizer_agent, summarizer_input)
+        literature_text_after_review = (
+            "\n".join([
+                f"- {getattr(lm, 'title', 'Untitled')}{(' (' + str(getattr(lm, 'year', None)) + ')') if getattr(lm, 'year', None) else ''}"
+                for lm in (literature_meta or [])
+            ]) if literature_meta else "None linked yet."
+        )
+        summarizer_input = f"""
+Project: {project.name}
+Project ID: {project.id}
+
+Objective:
+{(formalized.improved_abstract or paper.abstract or '').strip()}
+
+Linked literature to consider (title / optional year):
+{literature_text_after_review}
+
+Task: Read accessible linked sources using your tools and produce a focused synthesis.
+- Explain how each source connects to the objective.
+- Synthesize agreements, disagreements, and gaps relevant to the project.
+- Do not invent sources; cite by title/year only when you have tool-derived content.
+- Be concise and structured.
+"""
+        logger.info(f"running literature summarizer agent")
+        summarizer_result = await self._run(literature_summarizer_agent, summarizer_input, max_turns=50)
+        logger.info(f"literature summarizer agent result {summarizer_result}")
         summary: ProjectFocusedSummary = summarizer_result.final_output  # type: ignore
 
         # Save as Note with a 4-digit id suffix in title
         note_title = f"Literature Summary {random.randint(1000, 9999)}"
         note = await sync_to_async(Note.objects.create)(project=project, title=note_title, body=summary.combined_summary)
-
+        logger.info(f"note created {note}")
         # Step 4: Hypothesis generation (agent can create hypotheses via tools)
-        hypothesizer_input = self._build_hypothesizer_prompt(project, paper, formalized, literature_meta, experiments)
-        hypotheses_result = await self._run(hypothesizer_agent, hypothesizer_input)
+        experiments_text_after = (
+            "\n".join([f"- {e.name} (status={e.status})" for e in experiments])
+            if experiments else "None available."
+        )
+        hypothesizer_input = f"""
+Project: {project.name}
+Project ID: {project.id}
+
+Objective:
+{(formalized.improved_abstract or paper.abstract or '').strip()}
+
+Available experiments:
+{experiments_text_after}
+
+Task: Propose a small set of high-quality, testable hypotheses that would advance the objective.
+- Each hypothesis should be specific, falsifiable, and scoped to available capabilities.
+- Where possible, ground each hypothesis in linked literature or experiment context.
+- Use your tools to create hypotheses in the system; prioritize quality over quantity.
+"""
+        logger.info(f"running hypothesizer agent")
+        hypotheses_result = await self._run(hypothesizer_agent, hypothesizer_input, max_turns=50)
+        logger.info(f"hypothesizer agent result {hypotheses_result}")
         hypotheses_output: HypothesesOutput = hypotheses_result.final_output  # type: ignore
 
         # Return snapshot of created/updated items
@@ -116,84 +218,6 @@ class InitialResearchServiceManager:
             return await result
         return result
 
-    def _build_formalizer_prompt(
-        self,
-        project: Project,
-        paper: Paper,
-        experiments: List[ExperimentSummary],
-        literature_meta,
-    ) -> str:
-        lines: List[str] = []
-        lines.append(f"Project: {project.name}")
-        lines.append("")
-        lines.append("Current abstract:")
-        lines.append(paper.abstract or "")
-        lines.append("")
-        if experiments:
-            lines.append("Experiments available:")
-            for e in experiments:
-                lines.append(f"- {e.name} (status={e.status})")
-            lines.append("")
-        if literature_meta:
-            lines.append("Linked literature (by title/year):")
-            for lm in literature_meta:
-                year = f" ({lm.year})" if getattr(lm, 'year', None) else ""
-                lines.append(f"- {lm.title}{year}")
-            lines.append("")
-        lines.append("Task: Improve and formalize the research ask.")
-        return "\n".join(lines)
-
-    def _build_reviewer_prompt(
-        self,
-        project: Project,
-        paper: Paper,
-        formalized: FormalizedAsk,
-        literature_meta,
-    ) -> str:
-        lines: List[str] = []
-        lines.append(f"Project: {project.name}")
-        lines.append("Formalized ask:")
-        lines.append(formalized.improved_abstract or paper.abstract or "")
-        lines.append("")
-        lines.append("Use your tools to search and (if appropriate) link relevant literature to support the project.")
-        return "\n".join(lines)
-
-    def _build_summarizer_prompt(
-        self,
-        project: Project,
-        paper: Paper,
-        formalized: FormalizedAsk,
-        literature_meta,
-    ) -> str:
-        lines: List[str] = []
-        lines.append(f"Project: {project.name}")
-        lines.append("Objective:")
-        lines.append(formalized.improved_abstract or paper.abstract or "")
-        lines.append("")
-        lines.append("Summarize linked literature with focus on how each connects to the objective.")
-        lines.append("Only use your reading tools; do not invent sources.")
-        return "\n".join(lines)
-
-    def _build_hypothesizer_prompt(
-        self,
-        project: Project,
-        paper: Paper,
-        formalized: FormalizedAsk,
-        literature_meta,
-        experiments: List[ExperimentSummary],
-    ) -> str:
-        lines: List[str] = []
-        lines.append(f"Project: {project.name}")
-        lines.append("Objective:")
-        lines.append(formalized.improved_abstract or paper.abstract or "")
-        lines.append("")
-        if experiments:
-            lines.append("Available experiments:")
-            for e in experiments:
-                lines.append(f"- {e.name} (status={e.status})")
-            lines.append("")
-        lines.append("Create high-quality hypotheses needed to satisfy the research task.")
-        lines.append("Use your tools to create hypotheses; prefer quality over quantity.")
-        return "\n".join(lines)
+    
 
 

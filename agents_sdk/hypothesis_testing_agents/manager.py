@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List
+import inspect
 from asgiref.sync import async_to_sync, sync_to_async
 from pydantic import BaseModel
 from agents import Runner
@@ -44,11 +45,11 @@ class HypothesisTestingServiceManager:
         results: List[HypothesisTestResult] = []
         for h in existing:
             # 1) Research background
-            research_result = await self.runner.run(research_agent, f"Hypothesis: {h.title}\n{h.statement}")
+            research_result = await self._run(research_agent, f"Hypothesis: {h.title}\n{h.statement}", max_turns=50)
             research: HypothesisResearch = research_result.final_output  # type: ignore
 
             # 2) Simulation decision
-            decider_result = await self.runner.run(sim_decider_agent, f"Hypothesis: {h.title}\n{h.statement}\nBackground:\n{research.background_summary}")
+            decider_result = await self._run(sim_decider_agent, f"Hypothesis: {h.title}\n{h.statement}\nBackground:\n{research.background_summary}", max_turns=50)
             decision: SimulationDecision = decider_result.final_output  # type: ignore
 
             sim_out: SimulationResult | None = None
@@ -68,7 +69,7 @@ class HypothesisTestingServiceManager:
                 "",
                 f"Simulation: {sim_out.status if sim_out else 'not required'}",
             ])
-            answer_result = await self.runner.run(answer_agent, combined_input)
+            answer_result = await self._run(answer_agent, combined_input, max_turns=50)
             answer: HypothesisAnswer = answer_result.final_output  # type: ignore
 
             # Update status in DB
@@ -91,5 +92,12 @@ class HypothesisTestingServiceManager:
         async def go():
             return await self.process(project_id)
         return async_to_sync(go)()
+
+    async def _run(self, *args, **kwargs):
+        """Call Runner.run and support both async and sync mocks."""
+        result = self.runner.run(*args, **kwargs)
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
 

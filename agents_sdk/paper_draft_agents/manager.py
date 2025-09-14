@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from typing import Optional
-from asgiref.sync import async_to_sync
+from asgiref.sync import async_to_sync, sync_to_async
+import inspect
 from pydantic import BaseModel
 from agents import Runner
 
@@ -24,10 +25,10 @@ class PaperDraftServiceManager:
         self.runner = Runner()
 
     async def process(self, project_id: int) -> PaperDraftOutput:
-        project = Project.objects.get(pk=project_id)
-        paper, _ = Paper.objects.get_or_create(project=project, defaults={'title': project.name, 'abstract': project.abstract})
+        project = await sync_to_async(Project.objects.get)(pk=project_id)
+        paper, _ = await sync_to_async(Paper.objects.get_or_create)(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
-        result = await self.runner.run(drafting_agent, f"Project: {project.name}\nObjective: {paper.abstract or project.abstract or ''}")
+        result = await self._run(drafting_agent, f"Project: {project.name}\nObjective: {paper.abstract or project.abstract or ''}", max_turns=50)
         sections: DraftSections = result.final_output  # type: ignore
 
         updated = False
@@ -38,7 +39,7 @@ class PaperDraftServiceManager:
         content = paper.content_raw or ""
         content += ("\n\n# Literature Review\n\n" + sections.literature_review.strip())
         paper.content_raw = content
-        paper.save(update_fields=['abstract', 'content_raw', 'updated_at'])
+        await sync_to_async(paper.save)(update_fields=['abstract', 'content_raw', 'updated_at'])
 
         return PaperDraftOutput(
             project_id=project.id,
@@ -51,5 +52,12 @@ class PaperDraftServiceManager:
         async def go():
             return await self.process(project_id)
         return async_to_sync(go)()
+
+    async def _run(self, *args, **kwargs):
+        """Call Runner.run and support both async and sync mocks."""
+        result = self.runner.run(*args, **kwargs)
+        if inspect.isawaitable(result):
+            return await result
+        return result
 
 

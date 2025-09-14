@@ -412,59 +412,63 @@ def _start_automation_background(project_id: int):
             task.save(update_fields=['status', 'message', 'result_json', 'progress', 'finished_at', 'updated_at'])
 
         try:
-            threads = []
+            # 1) Initial research
+            t1 = start_task('initial_research')
+            try:
+                from agents_sdk.initial_research_agents.manager import InitialResearchServiceManager
+                out1 = InitialResearchServiceManager().run_for_project_sync(project_id)
+                complete_task(t1, AutomationTaskStatus.SUCCESS, result=out1.dict())
+            except Exception as e:
+                complete_task(t1, AutomationTaskStatus.FAILED, message=str(e))
+                job.status = AutomationJobStatus.FAILED
+                job.finished_at = timezone.now()
+                job.save(update_fields=['status', 'finished_at', 'updated_at'])
+                return
 
-            # Always run initial research
-            def run_initial_research():
-                t = start_task('initial_research')
-                try:
-                    from agents_sdk.initial_research_agents.manager import InitialResearchServiceManager
-                    out = InitialResearchServiceManager().run_for_project_sync(project_id)
-                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
-                except Exception as e:
-                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
-
-            # Only run initial draft if paper has no content
-            def run_initial_draft_if_needed():
-                t = start_task('initial_draft')
-                try:
-                    paper = Paper.objects.filter(project_id=project_id).first()
-                    if paper and (paper.content_raw or '').strip():
-                        complete_task(t, AutomationTaskStatus.CANCELLED, message='Skipped: paper already has content')
-                        return
+            # 2) Initial draft (only if paper empty)
+            t2 = start_task('initial_draft')
+            try:
+                paper = Paper.objects.filter(project_id=project_id).first()
+                if paper and (paper.content_raw or '').strip():
+                    complete_task(t2, AutomationTaskStatus.CANCELLED, message='Skipped: paper already has content')
+                else:
                     from agents_sdk.paper_draft_agents.manager import PaperDraftServiceManager
-                    out = PaperDraftServiceManager().run_for_project_sync(project_id)
-                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
-                except Exception as e:
-                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
+                    out2 = PaperDraftServiceManager().run_for_project_sync(project_id)
+                    complete_task(t2, AutomationTaskStatus.SUCCESS, result=out2.dict())
+            except Exception as e:
+                complete_task(t2, AutomationTaskStatus.FAILED, message=str(e))
+                job.status = AutomationJobStatus.FAILED
+                job.finished_at = timezone.now()
+                job.save(update_fields=['status', 'finished_at', 'updated_at'])
+                return
 
-            def run_hypothesis_testing():
-                t = start_task('hypothesis_testing')
-                try:
-                    from agents_sdk.hypothesis_testing_agents.manager import HypothesisTestingServiceManager
-                    out = HypothesisTestingServiceManager().run_for_project_sync(project_id)
-                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
-                except Exception as e:
-                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
+            # 3) Hypothesis testing
+            t3 = start_task('hypothesis_testing')
+            try:
+                from agents_sdk.hypothesis_testing_agents.manager import HypothesisTestingServiceManager
+                out3 = HypothesisTestingServiceManager().run_for_project_sync(project_id)
+                complete_task(t3, AutomationTaskStatus.SUCCESS, result=out3.dict())
+            except Exception as e:
+                complete_task(t3, AutomationTaskStatus.FAILED, message=str(e))
+                job.status = AutomationJobStatus.FAILED
+                job.finished_at = timezone.now()
+                job.save(update_fields=['status', 'finished_at', 'updated_at'])
+                return
 
-            def run_compilation():
-                t = start_task('compilation')
-                try:
-                    from agents_sdk.compilation_agents.manager import CompilationServiceManager
-                    out = CompilationServiceManager().run_for_project_sync(project_id)
-                    complete_task(t, AutomationTaskStatus.SUCCESS, result=out.dict())
-                except Exception as e:
-                    complete_task(t, AutomationTaskStatus.FAILED, message=str(e))
+            # 4) Compilation
+            t4 = start_task('compilation')
+            try:
+                from agents_sdk.compilation_agents.manager import CompilationServiceManager
+                out4 = CompilationServiceManager().run_for_project_sync(project_id)
+                complete_task(t4, AutomationTaskStatus.SUCCESS, result=out4.dict())
+            except Exception as e:
+                complete_task(t4, AutomationTaskStatus.FAILED, message=str(e))
+                job.status = AutomationJobStatus.FAILED
+                job.finished_at = timezone.now()
+                job.save(update_fields=['status', 'finished_at', 'updated_at'])
+                return
 
-            for fn in [run_initial_research, run_initial_draft_if_needed, run_hypothesis_testing, run_compilation]:
-                th = threading.Thread(target=fn)
-                th.daemon = True
-                th.start()
-                threads.append(th)
-
-            for th in threads:
-                th.join()
-
+            # Done
             job.status = AutomationJobStatus.SUCCESS
             job.finished_at = timezone.now()
             job.save(update_fields=['status', 'finished_at', 'updated_at'])

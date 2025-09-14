@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
-from agents import Agent
+from agents import Agent, ModelSettings
 
 from ...initial_research_agents.tools import create_experiment, run_experiment, get_experiment, CreateExperimentInput, ExperimentDetail
 
@@ -20,7 +20,12 @@ class SimulationResult(BaseModel):
 
 simulation_agent = Agent(
     name="simulation_runner",
-    model="gpt-4.1",
+    model="gpt-5",
+    model_settings=ModelSettings(
+        reasoning={
+            "effort": "high"
+        }
+    ),
     instructions=SIMULATION_INSTRUCTIONS,
     tools=[create_experiment, run_experiment, get_experiment],
     output_type=SimulationResult,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
-from agents import Agent
+from agents import Agent, ModelSettings
 
 
 ANSWER_INSTRUCTIONS = """
@@ -17,7 +17,12 @@ class HypothesisAnswer(BaseModel):
 
 answer_agent = Agent(
     name="hypothesis_answer",
-    model="gpt-4.1",
+    model="gpt-5",
+    model_settings=ModelSettings(
+        reasoning={
+            "effort": "medium"
+        }
+    ),
     instructions=ANSWER_INSTRUCTIONS,
     output_type=HypothesisAnswer,
 )

@@ -11,6 +11,9 @@ from main.research_services import HttpClient, search_all
 from main.research_services.types import PaperRecord, asdict_record
 from asgiref.sync import sync_to_async
 
+import logging
+
+logger = logging.getLogger(__name__)
 
 # ==========================
 # Pydantic Models (Tool I/O)
@@ -55,7 +58,7 @@ class LiteratureMeta(BaseModel):
 
 class LiteratureReadRequest(BaseModel):
     literature_id: int
-    max_chars: int = Field(default=8000, ge=100, le=200000)
+    max_chars: int = Field(default=6000, ge=100, le=200000)
     include_abstract: bool = True
 
 
@@ -174,7 +177,7 @@ async def literature_search(input: SearchInput) -> SearchResults:
 
     Returns structured results grouped by provider.
     """
-
+    logger.info(f"literature_search(input={input})")
     client = HttpClient()
     try:
         grouped = await search_all(
@@ -182,7 +185,9 @@ async def literature_search(input: SearchInput) -> SearchResults:
             query=input.query,
             limit_per_source=input.limit_per_source,
             mailto=None,
+            open_access_only=True,
         )
+        # logger.info(f"literature_search(grouped={grouped})")
     finally:
         await client.aclose()
     source_results: List[SearchSourceResults] = []
@@ -206,14 +211,17 @@ async def literature_search(input: SearchInput) -> SearchResults:
                 )
             )
         source_results.append(SearchSourceResults(provider=str(provider), papers=items))
+    logger.info(f"literature_search(source_results={source_results})")
     return SearchResults(results=source_results)
 
 
 def _list_literature_sync(project_id: int) -> List[LiteratureMeta]:
+    logger.info(f"list_literature(project_id={project_id})")
     project = Project.objects.get(pk=project_id)
     try:
         paper = project.paper
     except Paper.DoesNotExist:
+        logger.info(f"list_literature(project_id={project_id}) - Paper does not exist")
         return []
     results: List[LiteratureMeta] = []
     for cit in paper.citations.select_related('literature').order_by('order'):
@@ -227,16 +235,19 @@ def _list_literature_sync(project_id: int) -> List[LiteratureMeta]:
             url=lit.url or None,
             source_type=lit.source_type,
         ))
+    logger.info(f"list_literature(project_id={project_id}) - results={results}")
     return results
 
 
 @function_tool
 async def list_literature(project_id: int) -> List[LiteratureMeta]:
     """List literature linked to the project's paper (via citations)."""
+    logger.info(f"list_literature(project_id={project_id})")
     return await sync_to_async(_list_literature_sync)(project_id)
 
 
 def _read_literature_sync(request: LiteratureReadRequest) -> LiteratureReadResult:
+    logger.info(f"read_literature(request={request})")
     lit = Literature.objects.get(pk=request.literature_id)
     blocks: List[str] = []
     if request.include_abstract and lit.abstract:
@@ -246,6 +257,10 @@ def _read_literature_sync(request: LiteratureReadRequest) -> LiteratureReadResul
     content = ("\n\n".join(blocks)).strip() or ""
     if len(content) > request.max_chars:
         content = content[: request.max_chars]
+    try:
+        logger.info(f"read_literature(request={request}) - content={content[:100]}")
+    except Exception as e:
+        logger.error(f"read_literature(request={request}) - error={e}")
     return LiteratureReadResult(
         id=lit.id,
         title=lit.title,
@@ -260,6 +275,7 @@ def _read_literature_sync(request: LiteratureReadRequest) -> LiteratureReadResul
 @function_tool
 async def read_literature(request: LiteratureReadRequest) -> LiteratureReadResult:
     """Read literature text up to a maximum number of characters (abstract + full text)."""
+    logger.info(f"read_literature(request={request})")
     return await sync_to_async(_read_literature_sync)(request)
 
 
@@ -268,6 +284,7 @@ def _link_literature_sync(input: LinkLiteratureInput) -> LinkLiteratureResult:
 
     De-duplicates by DOI, then arXiv ID, else (title+url).
     """
+    logger.info(f"link_literature(input={input})")
     project = Project.objects.get(pk=input.project_id)
     paper, _ = Paper.objects.get_or_create(project=project, defaults={'title': project.name, 'abstract': project.abstract})
 
@@ -295,11 +312,13 @@ def _link_literature_sync(input: LinkLiteratureInput) -> LinkLiteratureResult:
 
     last_order = paper.citations.order_by('-order').first().order if paper.citations.exists() else 0
     cit = Citation.objects.create(paper=paper, literature=literature, order=last_order + 1)
+    logger.info(f"link_literature(input={input}) - cit={cit}")
     return LinkLiteratureResult(literature_id=literature.id, created=created, citation_id=cit.id)
 
 
 @function_tool
 async def link_literature(input: LinkLiteratureInput) -> LinkLiteratureResult:
+    logger.info(f"link_literature(input={input})")
     return await sync_to_async(_link_literature_sync)(input)
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import List
 from pydantic import BaseModel, Field
-from agents import Agent
+from agents import Agent, ModelSettings
 
 from ...initial_research_agents.tools import literature_search, list_literature, read_literature
 
@@ -21,7 +21,12 @@ class HypothesisResearch(BaseModel):
 
 research_agent = Agent(
     name="hypothesis_researcher",
-    model="gpt-4.1",
+    model="gpt-5",
+    model_settings=ModelSettings(
+        reasoning={
+            "effort": "high"
+        }
+    ),
     instructions=RESEARCHER_INSTRUCTIONS,
     tools=[literature_search, list_literature, read_literature],
     output_type=HypothesisResearch,
